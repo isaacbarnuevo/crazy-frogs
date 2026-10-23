@@ -491,6 +491,7 @@ class Frog {
     this.lives = 3;
     this.stunTimer = 0;
     this.invulnerableTimer = 0;
+    this.jumpBufferTimer = 0;
 
     // Configuración IA / CPU
     this.isCPU = false;
@@ -775,11 +776,16 @@ class Frog {
             this.isLookingUp = true;
           }
         } else {
-          if (keys['ArrowLeft'] || touchLeft) moveDir -= 1;
-          if (keys['ArrowRight'] || touchRight) moveDir += 1;
-          this.isCrouching = !!keys['ArrowDown'] || touchDown;
-          this.isLookingUp = (!!keys['ArrowUp'] || touchUp) && this.onGround && !keys['ArrowLeft'] && !keys['ArrowRight'] && !touchLeft && !touchRight;
-          if ((keys['ArrowUp'] || touchUp) && moveDir !== 0) {
+          const isLeft = (keys && (keys['ArrowLeft'] || (keys._isGuestPlayer && keys['KeyA']))) || touchLeft;
+          const isRight = (keys && (keys['ArrowRight'] || (keys._isGuestPlayer && keys['KeyD']))) || touchRight;
+          const isDown = (keys && (keys['ArrowDown'] || (keys._isGuestPlayer && keys['KeyS']))) || touchDown;
+          const isUp = (keys && (keys['ArrowUp'] || (keys._isGuestPlayer && keys['KeyW']))) || touchUp;
+
+          if (isLeft) moveDir -= 1;
+          if (isRight) moveDir += 1;
+          this.isCrouching = !!isDown;
+          this.isLookingUp = (!!isUp) && this.onGround && !isLeft && !isRight;
+          if (isUp && moveDir !== 0) {
             this.isLookingUp = true;
           }
         }
@@ -848,6 +854,15 @@ class Frog {
           // Seguir el movimiento del nenúfar
           this.x += (this.currentLilyPad.x - this.currentLilyPad.baseX) * dt * 1.5;
         }
+      }
+    }
+
+    // Buffer de salto (si el salto se pulsa o llega por red poco antes de aterrizar)
+    if (this.jumpBufferTimer > 0) {
+      this.jumpBufferTimer -= dt;
+      if (this.onGround) {
+        this.jump();
+        this.jumpBufferTimer = 0;
       }
     }
 
@@ -1655,11 +1670,21 @@ class CrazyFrogsGame {
           // Si somos Invitado online, controlamos a Rana 2 y enviamos acciones por red
           if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Space' || e.code === 'Enter' || e.code === 'ShiftRight' || e.code === 'ShiftLeft' || e.code === 'KeyL') {
             e.preventDefault();
+            if (this.p2 && !this.p2.tongue.active) {
+              this.p2.shootTongue(this.keys);
+            }
             this.sendGuestAction({ t: 'T' });
             return;
           }
           if (e.code === 'KeyW' || e.code === 'ArrowUp') {
             e.preventDefault();
+            if (this.p2) {
+              if (this.p2.onGround) {
+                this.p2.jump();
+              } else {
+                this.p2.jumpBufferTimer = 0.15;
+              }
+            }
             this.sendGuestAction({ t: 'J' });
             return;
           }
@@ -1759,6 +1784,13 @@ class CrazyFrogsGame {
         this.touchState.up = true;
         if (this.gameState === 'playing') {
           if (this.isOnline && this.onlineRole === 'guest') {
+            if (this.p2) {
+              if (this.p2.onGround) {
+                this.p2.jump();
+              } else {
+                this.p2.jumpBufferTimer = 0.15;
+              }
+            }
             this.sendGuestAction({ t: 'J' });
           } else if (this.p1) {
             this.p1.jump();
@@ -1772,6 +1804,13 @@ class CrazyFrogsGame {
       () => {
         if (this.gameState === 'playing') {
           if (this.isOnline && this.onlineRole === 'guest') {
+            if (this.p2) {
+              if (this.p2.onGround) {
+                this.p2.jump();
+              } else {
+                this.p2.jumpBufferTimer = 0.15;
+              }
+            }
             this.sendGuestAction({ t: 'J' });
           } else if (this.p1) {
             this.p1.jump();
@@ -1785,6 +1824,9 @@ class CrazyFrogsGame {
       () => {
         if (this.gameState === 'playing') {
           if (this.isOnline && this.onlineRole === 'guest') {
+            if (this.p2 && !this.p2.tongue.active) {
+              this.p2.shootTongue(this.keys);
+            }
             this.sendGuestAction({ t: 'T' });
           } else if (this.p1) {
             this.p1.shootTongue(this.keys);
@@ -2602,13 +2644,24 @@ class CrazyFrogsGame {
 
     // Actualizar ranas (Host aplica guestInputs a P2; Guest usa touchState en P2)
     const bounds = { width: this.canvas.width, height: this.canvas.height };
-    const p1Touch = (this.isOnline && this.onlineRole === 'guest') ? null : this.touchState;
-    const p2Touch = (this.isOnline && this.onlineRole === 'guest') ? this.touchState : null;
-    const p2Keys = (this.isOnline && this.onlineRole === 'host')
-      ? { ...this.guestInputs, _isGuestInputs: true }
-      : this.keys;
+    const isGuest = this.isOnline && this.onlineRole === 'guest';
+    const isHost = this.isOnline && this.onlineRole === 'host';
 
-    this.p1.update(dt, this.keys, this.lilyPads, this.bugs, this.p2, bounds, this.particles, this.floatingTexts, this.difficulty, p1Touch);
+    // En Guest: P1 es remoto (Host) por lo que no debe responder a teclas locales del Guest
+    const p1Keys = isGuest ? {} : this.keys;
+    const p1Touch = isGuest ? null : this.touchState;
+
+    // En Guest: P2 es el jugador local y puede usar Flechas, WASD o Touch
+    // En Host: P2 recibe los guestInputs
+    const p2Touch = isGuest ? this.touchState : null;
+    let p2Keys = this.keys;
+    if (isHost) {
+      p2Keys = { ...this.guestInputs, _isGuestInputs: true };
+    } else if (isGuest) {
+      p2Keys = { ...this.keys, _isGuestPlayer: true };
+    }
+
+    this.p1.update(dt, p1Keys, this.lilyPads, this.bugs, this.p2, bounds, this.particles, this.floatingTexts, this.difficulty, p1Touch);
     this.p2.update(dt, p2Keys, this.lilyPads, this.bugs, this.p1, bounds, this.particles, this.floatingTexts, this.difficulty, p2Touch);
 
     // Si somos Host en 2P Online, transmitir instantánea de estado a 30 FPS (~33ms)
@@ -3203,7 +3256,11 @@ class CrazyFrogsGame {
         };
       } else if (packet.t === 'J') {
         if (this.p2 && this.gameState === 'playing') {
-          this.p2.jump();
+          if (this.p2.onGround) {
+            this.p2.jump();
+          } else {
+            this.p2.jumpBufferTimer = 0.15;
+          }
         }
       } else if (packet.t === 'T') {
         if (this.p2 && this.gameState === 'playing') {
@@ -3257,23 +3314,39 @@ class CrazyFrogsGame {
       }
     }
 
-    // Sincronizar P2 (Invitado)
+    // Sincronizar P2 (Invitado) - Reconciliación suave sin tirones
     if (this.p2 && s.p2) {
       if (typeof s.p2.x === 'number' && typeof s.p2.y === 'number') {
-        if (Math.hypot(this.p2.x - s.p2.x, this.p2.y - s.p2.y) > 35) {
+        const dx = s.p2.x - this.p2.x;
+        const dy = s.p2.y - this.p2.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > 120) {
+          // Desfase grande: corrección directa
           this.p2.x = s.p2.x;
           this.p2.y = s.p2.y;
+          if (typeof s.p2.vx === 'number') this.p2.vx = s.p2.vx;
+          if (typeof s.p2.vy === 'number') this.p2.vy = s.p2.vy;
+        } else if (dist > 3) {
+          // Reconciliación suave: converge hacia la posición del host sin tirones
+          this.p2.x += dx * 0.35;
+          this.p2.y += dy * 0.35;
+          if (typeof s.p2.vy === 'number') {
+            this.p2.vy += (s.p2.vy - this.p2.vy) * 0.35;
+          }
+          if (typeof s.p2.vx === 'number') {
+            this.p2.vx += (s.p2.vx - this.p2.vx) * 0.35;
+          }
         }
       }
       if (typeof s.p2.score === 'number') this.p2.score = s.p2.score;
       if (typeof s.p2.lives === 'number') this.p2.lives = s.p2.lives;
       if (typeof s.p2.stun === 'number') this.p2.stunTimer = s.p2.stun;
-      if (typeof s.p2.tAct === 'boolean') this.p2.tongue.active = s.p2.tAct;
-      if (typeof s.p2.tLen === 'number') this.p2.tongue.length = s.p2.tLen;
-      if (typeof s.p2.tDirX === 'number') this.p2.tongue.dirX = s.p2.tDirX;
-      if (typeof s.p2.tDirY === 'number') this.p2.tongue.dirY = s.p2.tDirY;
-      if (s.p2.tState) this.p2.tongue.state = s.p2.tState;
-
+      if (typeof s.p2.tAct === 'boolean') {
+        if (!s.p2.tAct && this.p2.tongue.active) {
+          this.p2.tongue.active = false;
+        }
+      }
       if (s.p2.cBug && !this.p2.tongue.caughtBug) {
         this.p2.tongue.caughtBug = new Bug(s.p2.cBug.type, this.p2.tongue.tipX, this.p2.tongue.tipY, { width: this.canvas.width, height: this.canvas.height });
       } else if (!s.p2.cBug) {
