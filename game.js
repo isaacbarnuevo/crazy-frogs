@@ -242,19 +242,29 @@ class LilyPad {
     this.baseY = y;
     this.x = x;
     this.y = y;
+    this.prevX = x;
+    this.dx = 0;
     this.radius = radius;
     this.moves = moves;
     this.moveSpeed = moveSpeed;
     this.moveDist = moveDist;
     this.moveAngle = Math.random() * Math.PI * 2;
+    if (moves) {
+      this.x = this.baseX + Math.sin(this.moveAngle) * this.moveDist;
+      this.prevX = this.x;
+    }
     this.dip = 0; // Se hunde cuando se para una rana
     this.flowerColor = Math.random() > 0.5 ? '#f472b6' : '#fbbf24';
   }
 
   update(dt) {
+    this.prevX = this.x;
     if (this.moves) {
       this.moveAngle += this.moveSpeed * dt;
       this.x = this.baseX + Math.sin(this.moveAngle) * this.moveDist;
+      this.dx = this.x - this.prevX;
+    } else {
+      this.dx = 0;
     }
     // Suave recuperación del hundimiento
     if (this.dip > 0) {
@@ -822,37 +832,35 @@ class Frog {
     if (this.x < 25) { this.x = 25; this.vx = 0; }
     if (this.x > gameBounds.width - 25) { this.x = gameBounds.width - 25; this.vx = 0; }
 
-    // Colisión con Nenúfares
-    let landedOnPad = false;
-    for (const pad of lilyPads) {
-      const curPadY = pad.y + pad.dip;
-      // Comprobar si los pies de la rana caen sobre la superficie del nenúfar
-      const feetY = this.y + this.height * 0.45;
-      const distX = Math.abs(this.x - pad.x);
+    // Si la rana está sobre un nenúfar, sigue su movimiento lateral y vertical (efecto ascensor / plataforma móvil)
+    if (this.onGround && this.currentLilyPad) {
+      this.x += this.currentLilyPad.dx || 0;
+      this.y = (this.currentLilyPad.y + this.currentLilyPad.dip) - this.height * 0.45;
 
-      if (distX < pad.radius * 0.85 && this.vy >= 0) {
-        if (feetY >= curPadY - 10 && feetY <= curPadY + 22) {
-          this.y = curPadY - this.height * 0.45;
-          this.vy = 0;
-          this.onGround = true;
-          this.currentLilyPad = pad;
-          pad.dip = Math.min(12, pad.dip + 7);
-          landedOnPad = true;
-          break;
-        }
+      // Comprobar si se ha salido de los bordes del nenúfar
+      const distX = Math.abs(this.x - this.currentLilyPad.x);
+      if (distX > this.currentLilyPad.radius * 0.95) {
+        this.onGround = false;
+        this.currentLilyPad = null;
       }
     }
 
-    if (!landedOnPad && this.onGround) {
-      // Si el nenúfar se movió y la rana ya no está encima
-      if (this.currentLilyPad) {
-        const distX = Math.abs(this.x - this.currentLilyPad.x);
-        if (distX > this.currentLilyPad.radius) {
-          this.onGround = false;
-          this.currentLilyPad = null;
-        } else {
-          // Seguir el movimiento del nenúfar
-          this.x += (this.currentLilyPad.x - this.currentLilyPad.baseX) * dt * 1.5;
+    // Aterrizaje sobre Nenúfares cuando está en el aire
+    if (!this.onGround && this.vy >= 0) {
+      for (const pad of lilyPads) {
+        const curPadY = pad.y + pad.dip;
+        const feetY = this.y + this.height * 0.45;
+        const distX = Math.abs(this.x - pad.x);
+
+        if (distX < pad.radius * 0.85) {
+          if (feetY >= curPadY - 10 && feetY <= curPadY + 22) {
+            this.y = curPadY - this.height * 0.45;
+            this.vy = 0;
+            this.onGround = true;
+            this.currentLilyPad = pad;
+            pad.dip = Math.min(12, pad.dip + 7);
+            break;
+          }
         }
       }
     }
@@ -1783,17 +1791,23 @@ class CrazyFrogsGame {
       () => {
         this.touchState.up = true;
         if (this.gameState === 'playing') {
-          if (this.isOnline && this.onlineRole === 'guest') {
-            if (this.p2) {
-              if (this.p2.onGround) {
-                this.p2.jump();
-              } else {
-                this.p2.jumpBufferTimer = 0.15;
-              }
+          const activeFrog = (this.isOnline && this.onlineRole === 'guest') ? this.p2 : this.p1;
+          if (activeFrog) {
+            if (this.touchState.left) {
+              activeFrog.vx = -300;
+              activeFrog.facing = -1;
+            } else if (this.touchState.right) {
+              activeFrog.vx = 300;
+              activeFrog.facing = 1;
             }
+            if (activeFrog.onGround) {
+              activeFrog.jump();
+            } else {
+              activeFrog.jumpBufferTimer = 0.15;
+            }
+          }
+          if (this.isOnline && this.onlineRole === 'guest') {
             this.sendGuestAction({ t: 'J' });
-          } else if (this.p1) {
-            this.p1.jump();
           }
         }
       },
@@ -1805,6 +1819,8 @@ class CrazyFrogsGame {
         if (this.gameState === 'playing') {
           if (this.isOnline && this.onlineRole === 'guest') {
             if (this.p2) {
+              if (this.touchState.left) { this.p2.vx = -300; this.p2.facing = -1; }
+              else if (this.touchState.right) { this.p2.vx = 300; this.p2.facing = 1; }
               if (this.p2.onGround) {
                 this.p2.jump();
               } else {
@@ -1813,6 +1829,8 @@ class CrazyFrogsGame {
             }
             this.sendGuestAction({ t: 'J' });
           } else if (this.p1) {
+            if (this.touchState.left) { this.p1.vx = -300; this.p1.facing = -1; }
+            else if (this.touchState.right) { this.p1.vx = 300; this.p1.facing = 1; }
             this.p1.jump();
           }
         }
@@ -1862,8 +1880,22 @@ class CrazyFrogsGame {
         const dy = clientY - cy;
         const dist = Math.hypot(dx, dy);
 
+        // Visualización del Knob del Joystick Virtual
+        const knob = document.getElementById('dpadKnob');
+        if (knob) {
+          const maxDist = 38;
+          let kx = dx;
+          let ky = dy;
+          if (dist > maxDist) {
+            kx = (dx / dist) * maxDist;
+            ky = (dy / dist) * maxDist;
+          }
+          knob.style.transform = `translate3d(${kx}px, ${ky}px, 0)`;
+        }
+
         const deadZone = 10;
-        const threshold = 16;
+        const thresholdX = 14;
+        const thresholdY = 16;
 
         let left = false;
         let right = false;
@@ -1871,15 +1903,33 @@ class CrazyFrogsGame {
         let down = false;
 
         if (dist > deadZone) {
-          if (dx < -threshold) left = true;
-          if (dx > threshold) right = true;
-          if (dy < -threshold) up = true;
-          if (dy > threshold) down = true;
+          if (dx < -thresholdX) left = true;
+          if (dx > thresholdX) right = true;
+          if (dy < -thresholdY) up = true;
+          if (dy > thresholdY) down = true;
         }
 
+        // Salto con inercia direccional al mover en diagonal o hacia arriba
         if (up && !this.touchState.up) {
-          if (this.gameState === 'playing' && this.p1) {
-            this.p1.jump();
+          if (this.gameState === 'playing') {
+            const activeFrog = (this.isOnline && this.onlineRole === 'guest') ? this.p2 : this.p1;
+            if (activeFrog) {
+              if (left) {
+                activeFrog.vx = -300;
+                activeFrog.facing = -1;
+              } else if (right) {
+                activeFrog.vx = 300;
+                activeFrog.facing = 1;
+              }
+              if (activeFrog.onGround) {
+                activeFrog.jump();
+              } else {
+                activeFrog.jumpBufferTimer = 0.15;
+              }
+            }
+            if (this.isOnline && this.onlineRole === 'guest') {
+              this.sendGuestAction({ t: 'J' });
+            }
           }
         }
 
@@ -1905,6 +1955,10 @@ class CrazyFrogsGame {
         this.touchState.right = false;
         this.touchState.up = false;
         this.touchState.down = false;
+        const knob = document.getElementById('dpadKnob');
+        if (knob) {
+          knob.style.transform = 'translate3d(0, 0, 0)';
+        }
         ['touchLeft', 'touchRight', 'touchUp', 'touchDown'].forEach(id => {
           const el = document.getElementById(id);
           if (el && el.classList) el.classList.remove('active');
@@ -1972,6 +2026,7 @@ class CrazyFrogsGame {
               const mouthY = this.p2.y - this.p2.height * 0.1;
               const dx = canvasX - mouthX;
               const dy = canvasY - mouthY;
+              this.p2.shootTongue(null, { dx, dy });
               this.sendGuestAction({ t: 'T', dir: { dx, dy } });
             }
           } else if (this.p1) {
@@ -2640,6 +2695,19 @@ class CrazyFrogsGame {
       // Actualizar moscas
       this.bugs = this.bugs.filter(b => b.alive);
       this.bugs.forEach(bug => bug.update(dt));
+    } else if (this.isOnline && this.onlineRole === 'guest') {
+      // Interpolación suave y sin lag en el cliente invitado (60 FPS fluidos)
+      this.bugs = this.bugs.filter(b => b.alive);
+      this.bugs.forEach(bug => {
+        if (typeof bug.targetX === 'number') {
+          bug.x += (bug.targetX - bug.x) * 0.45 + (bug.vx || 0) * dt;
+          bug.y += (bug.targetY - bug.y) * 0.45 + (bug.vy || 0) * dt;
+          bug.wingTimer = (bug.wingTimer || 0) + dt * 25;
+          bug.wingAngle = Math.sin(bug.wingTimer) * 0.6;
+        } else {
+          bug.update(dt);
+        }
+      });
     }
 
     // Actualizar ranas (Host aplica guestInputs a P2; Guest usa touchState en P2)
@@ -2709,6 +2777,8 @@ class CrazyFrogsGame {
             type: b.type,
             x: Math.round(b.x),
             y: Math.round(b.y),
+            vx: Math.round((b.vx || 0) * 10) / 10,
+            vy: Math.round((b.vy || 0) * 10) / 10,
             alive: b.alive
           })),
           winner: this.onlineWinner !== undefined ? this.onlineWinner : null
@@ -3354,7 +3424,7 @@ class CrazyFrogsGame {
       }
     }
 
-    // Sincronizar Moscas
+    // Sincronizar Moscas con interpolación suave
     if (Array.isArray(s.bugs)) {
       const bounds = { width: this.canvas.width, height: this.canvas.height };
       const currentBugsMap = new Map();
@@ -3366,9 +3436,15 @@ class CrazyFrogsGame {
         if (!bug) {
           bug = new Bug(sb.type, sb.x, sb.y, bounds);
           bug.id = sb.id;
+          bug.targetX = sb.x;
+          bug.targetY = sb.y;
+          bug.vx = sb.vx || 0;
+          bug.vy = sb.vy || 0;
         } else {
-          bug.x = sb.x;
-          bug.y = sb.y;
+          bug.targetX = sb.x;
+          bug.targetY = sb.y;
+          if (typeof sb.vx === 'number') bug.vx = sb.vx;
+          if (typeof sb.vy === 'number') bug.vy = sb.vy;
           bug.alive = sb.alive;
         }
         if (bug.alive) {

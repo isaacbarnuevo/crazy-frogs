@@ -279,17 +279,21 @@
           <div class="dpad-center"></div>
           <button id="touchRight" class="dpad-btn dpad-right" aria-label="Derecha">▶</button>
           <button id="touchDown" class="dpad-btn dpad-down" aria-label="Agacharse">▼</button>
+          <!-- Stick / Puntero analógico táctil visual para control diagonal fluido -->
+          <div id="dpadKnob" class="dpad-knob"></div>
         </div>
       </div>
 
       <!-- Botón de Acción Derecho: Solo LENGUA (Salto integrado en flecha arriba) -->
       <div class="touch-group touch-group-right">
+        <button id="touchJump" class="touch-btn touch-btn-action touch-btn-jump" aria-label="Saltar">
+          <span class="touch-icon">▲</span>
+          <span class="touch-label">SALTO</span>
+        </button>
         <button id="touchTongue" class="touch-btn touch-btn-action touch-btn-tongue" aria-label="Lenguazo">
           <span class="touch-icon">👅</span>
           <span class="touch-label">LENGUA</span>
         </button>
-        <!-- Elemento oculto para compatibilidad con suites de pruebas -->
-        <button id="touchJump" class="hidden" style="display:none;" aria-hidden="true"></button>
       </div>
     </div>
   </div>

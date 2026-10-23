@@ -962,6 +962,25 @@ body.in-game .touch-controls {
   touch-action: none;
 }
 
+
+.dpad-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  margin-left: -22px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #4ade80 0%, #15803d 100%);
+  border: 2px solid #86efac;
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.7), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.04s ease-out;
+  z-index: 5;
+}
+
 .dpad-center {
   position: absolute;
   top: 50%;
