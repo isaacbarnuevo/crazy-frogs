@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crazy Frogs: Batalla en el Estanque</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Press+Start+2P&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="game-container" id="gameContainer">
+    <!-- Canvas del juego -->
+    <canvas id="gameCanvas" width="1024" height="600"></canvas>
+
+    <!-- Overlay de Interfaz de Usuario / Menú Principal -->
+    <div id="uiOverlay" class="ui-overlay">
+      <div id="mainMenu" class="menu-card animate-pop">
+        <h1 class="game-title">
+          <span class="title-crazy">CRAZY</span> 
+          <span class="title-frogs">FROGS</span>
+        </h1>
+        <p class="game-subtitle">¡Batalla de Lenguas en el Estanque!</p>
+
+        <div class="menu-sections">
+          <!-- Configuración de Jugadores (Nombres) -->
+          <div class="setting-group players-name-group">
+            <label class="setting-label">👥 Nombre de los Jugadores:</label>
+            <div class="player-name-inputs">
+              <div class="name-field p1-field">
+                <span class="field-icon">🐸</span>
+                <input type="text" id="inputP1Name" maxlength="12" placeholder="Jugador 1" value="Rana Verde" title="Nombre del Jugador 1" />
+              </div>
+              <span class="vs-badge">VS</span>
+              <div class="name-field p2-field">
+                <span class="field-icon">🐸</span>
+                <input type="text" id="inputP2Name" maxlength="12" placeholder="Jugador 2" value="Rana Coral" title="Nombre del Jugador 2" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Selector de Modo de Oponente (1P vs CPU / 2P Local / 2P Online) -->
+          <div class="setting-group compact opponent-group">
+            <label class="setting-label">🎮 Partida:</label>
+            <div class="pill-selector" id="opponentSelector">
+              <button class="pill-btn active" data-opponent="cpu">🤖 1P vs CPU</button>
+              <button class="pill-btn" data-opponent="local2p">👥 2P Local</button>
+              <button class="pill-btn" data-opponent="online2p">🌐 2P Online</button>
+            </div>
+          </div>
+
+          <!-- Modo y Dificultad en fila dual -->
+          <div class="settings-dual-row">
+            <div class="setting-group compact">
+              <label class="setting-label">🎯 Modo:</label>
+              <div class="pill-selector" id="modeSelector">
+                <button class="pill-btn active" data-mode="time">⏱️ Tiempo</button>
+                <button class="pill-btn" data-mode="lives">❤️ Vidas</button>
+                <button class="pill-btn" data-mode="race">🏁 Carrera</button>
+              </div>
+            </div>
+
+            <div class="setting-group compact">
+              <label class="setting-label">⚡ Dificultad de la CPU:</label>
+              <div class="pill-selector" id="diffSelector">
+                <button class="pill-btn" data-diff="easy" title="Rana novata, partidas relajadas">Fácil 🌿</button>
+                <button class="pill-btn active" data-diff="normal" title="Rana equilibrada, partidas reñidas">Normal 🦟</button>
+                <button class="pill-btn" data-diff="hard" title="Rana experta y veloz">Caos 🌪️</button>
+              </div>
+              <div class="diff-hint" id="diffHint">🦟 Normal: Duelo equilibrado y divertido</div>
+            </div>
+          </div>
+
+          <!-- Guía de controles visual compacta -->
+          <div class="controls-guide">
+            <div class="player-controls-box p1-box">
+              <div class="player-header">
+                <span class="frog-icon">🐸</span>
+                <span class="p-name" id="displayP1CardName">Rana Verde</span>
+              </div>
+              <div class="control-grid">
+                <span><kbd>A</kbd> <kbd>D</kbd> : Mover</span>
+                <span><kbd>W</kbd> : <strong>Saltar</strong></span>
+                <span><kbd>S</kbd> : Agacharse</span>
+                <span><kbd>E</kbd>/<kbd>F</kbd>/<kbd>Espacio</kbd> : <strong>¡LENGUAZO!</strong></span>
+              </div>
+            </div>
+
+            <div class="player-controls-box p2-box">
+              <div class="player-header">
+                <span class="frog-icon">🐸</span>
+                <span class="p-name" id="displayP2CardName">Rana Coral</span>
+              </div>
+              <div class="control-grid">
+                <span><kbd>◀</kbd> <kbd>▶</kbd> : Mover</span>
+                <span><kbd>▲</kbd> : <strong>Saltar</strong></span>
+                <span><kbd>▼</kbd> : Agacharse</span>
+                <span><kbd>Enter</kbd>/<kbd>Shift</kbd>/<kbd>L</kbd> : <strong>¡LENGUAZO!</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="menu-actions">
+          <button id="btnStartGame" class="btn-play">
+            <span class="btn-text">¡A CAZAR MOSCAS!</span>
+            <span class="btn-subtext">Pulsa para empezar</span>
+          </button>
+          <button id="btnFullscreen" class="btn-icon btn-screen" title="Pantalla Completa y Bloquear Horizontal">
+            📱 Pantalla Completa
+          </button>
+          <button id="btnOpenLeaderboard" class="btn-icon btn-trophy" title="Ver Récords y Clasificación">
+            🏆 Salón de la Fama
+          </button>
+          <button id="btnToggleSound" class="btn-icon" title="Sonido / Música">
+            🔊 FX & Música: ON
+          </button>
+        </div>
+      </div>
+
+      <!-- Pantalla de Pausa -->
+      <div id="pauseMenu" class="menu-card hidden animate-pop">
+        <h2>⏸️ JUEGO EN PAUSA</h2>
+        <p>Tómate un respiro antes de seguir cazando.</p>
+        <div class="menu-actions">
+          <button id="btnResume" class="btn-play">Continuar</button>
+          <button id="btnFullscreenPause" class="btn-secondary">📱 Pantalla Completa</button>
+          <button id="btnRestartFromPause" class="btn-secondary">Reiniciar Partida</button>
+          <button id="btnBackToMenu" class="btn-secondary">Menú Principal</button>
+        </div>
+      </div>
+
+      <!-- Pantalla de Fin de Partida / Victoria -->
+      <div id="gameOverMenu" class="menu-card hidden animate-pop">
+        <h2 id="winnerTitle" class="winner-title">🏆 ¡GANADOR!</h2>
+        <div id="winnerBanner" class="winner-banner"></div>
+        <div id="recordAlert" class="new-record-badge hidden">⭐ ¡NUEVO RÉCORD REGISTRADO EN EL RANKING! ⭐</div>
+
+        <div class="results-stats">
+          <div class="stat-card p1-stat">
+            <h3 id="statHeaderP1">🐸 Jugador 1</h3>
+            <p class="stat-score" id="statScoreP1">0 pts</p>
+            <div class="stat-details" id="statDetailsP1">Moscas: 0 | Precisión: 0%</div>
+          </div>
+          <div class="stat-card p2-stat">
+            <h3 id="statHeaderP2">🐸 Jugador 2</h3>
+            <p class="stat-score" id="statScoreP2">0 pts</p>
+            <div class="stat-details" id="statDetailsP2">Moscas: 0 | Precisión: 0%</div>
+          </div>
+        </div>
+
+        <div class="menu-actions">
+          <button id="btnRematch" class="btn-play">
+            <span>¡REVANCHA! (Pulsa R)</span>
+          </button>
+          <button id="btnGameOverLeaderboard" class="btn-secondary">🏆 Ver Ranking</button>
+          <button id="btnGameOverToMenu" class="btn-secondary">Volver al Menú</button>
+        </div>
+      </div>
+
+      <!-- Pantalla / Modal de Ranking (Salón de la Fama) -->
+      <div id="leaderboardMenu" class="menu-card hidden animate-pop leaderboard-card">
+        <h2 class="leaderboard-title">🏆 SALÓN DE LA FAMA</h2>
+        <p class="leaderboard-subtitle">¡Los mejores cazadores de moscas de la historia del estanque!</p>
+
+        <!-- Selector de Alcance (Global / Local) y estado de conexión -->
+        <div class="lb-scope-bar">
+          <div class="lb-scope-selector" id="lbScopeSelector">
+            <button class="lb-scope-btn active" data-scope="global">🌍 Ranking Global</button>
+            <button class="lb-scope-btn" data-scope="local">💻 Este Equipo</button>
+          </div>
+          <span id="lbCloudStatus" class="lb-status-badge status-offline">⚪ Modo Local</span>
+        </div>
+
+        <!-- Selector de pestañas por modo -->
+        <div class="lb-tabs" id="lbTabs">
+          <button class="lb-tab active" data-lbmode="time">⏱️ Modo Tiempo</button>
+          <button class="lb-tab" data-lbmode="lives">❤️ Supervivencia</button>
+          <button class="lb-tab" data-lbmode="race">🎯 Carrera Rápida</button>
+        </div>
+
+        <!-- Contenedor de la tabla -->
+        <div class="lb-table-container">
+          <table class="lb-table">
+            <thead>
+              <tr id="lbTableHead">
+                <th>#</th>
+                <th>Cazador</th>
+                <th>Récord</th>
+                <th>Detalles</th>
+                <th>Dificultad</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody id="lbTableBody">
+              <!-- Rellenado dinámicamente -->
+            </tbody>
+          </table>
+          <div id="lbEmptyState" class="lb-empty hidden">
+            Aún no hay récords guardados en este modo. ¡Sé el primero en jugar!
+          </div>
+        </div>
+
+        <div class="menu-actions lb-actions">
+          <button id="btnCloseLeaderboard" class="btn-play">
+            <span>Volver al Menú</span>
+          </button>
+          <button id="btnResetLeaderboard" class="btn-secondary btn-danger" title="Borrar historial de récords locales">
+            🗑️ Reiniciar Récords
+          </button>
+        </div>
+      </div>
+
+      <!-- Pantalla / Modal de Lobby 2P Online (WebRTC P2P) -->
+      <div id="onlineLobbyMenu" class="menu-card hidden animate-pop online-lobby-card">
+        <h2 class="online-title">🌐 DUELO 2P ONLINE</h2>
+        <p class="online-subtitle">¡Juega en tiempo real con un amigo a distancia!</p>
+
+        <!-- Pestañas Host / Unirse -->
+        <div class="online-tab-bar">
+          <button id="btnTabHost" class="online-tab active">👑 Crear Sala (Host)</button>
+          <button id="btnTabJoin" class="online-tab">🤝 Unirse con Código</button>
+        </div>
+
+        <!-- Panel Host (Crear Sala) -->
+        <div id="panelHost" class="online-subpanel">
+          <p class="panel-desc">Comparte este código de sala con tu amigo para que se conecte:</p>
+          <div class="room-code-box">
+            <span id="displayRoomCode" class="room-code-text">FROG--</span>
+            <button id="btnCopyRoomCode" class="btn-icon btn-sm" title="Copiar código al portapapeles">📋 Copiar</button>
+          </div>
+          <div class="online-status-row">
+            <span id="hostStatusBadge" class="status-badge status-waiting">⏳ Esperando a que tu amigo se una...</span>
+          </div>
+        </div>
+
+        <!-- Panel Invitado (Unirse con Código) -->
+        <div id="panelJoin" class="online-subpanel hidden">
+          <p class="panel-desc">Escribe el código de sala que te envió tu amigo:</p>
+          <div class="room-input-box">
+            <input type="text" id="inputJoinCode" maxlength="8" placeholder="EJ: FROG24" autocomplete="off" />
+            <button id="btnConnectToRoom" class="btn-play btn-sm">🚀 Conectar</button>
+          </div>
+          <div class="online-status-row">
+            <span id="joinStatusBadge" class="status-badge status-idle">⚪ Introduce el código</span>
+          </div>
+        </div>
+
+        <div class="menu-actions online-actions">
+          <button id="btnCloseOnlineLobby" class="btn-secondary">
+            <span>Volver al Menú</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de información rápida arriba en juego (HUD adicional para avisos) -->
+    <div id="toastMessage" class="toast-message hidden"></div>
+
+    <!-- Indicador de Latencia / Ping Online en Partida -->
+    <div id="onlineHudBadge" class="online-hud-badge hidden">
+      <span class="online-dot">🟢</span> 2P Online: <span id="onlinePingDisplay">-- ms</span>
+    </div>
+
+    <!-- Controles Táctiles Virtuales en Pantalla (Móvil / Android) -->
+    <div id="touchControls" class="touch-controls">
+      <!-- Botón de Pausa Rápida para Móvil -->
+      <button id="touchPauseBtn" class="touch-pause-btn" aria-label="Pausa">⏸️</button>
+
+      <!-- D-Pad Izquierdo Ergonomico (Cruceta: Arriba Salta, Izq/Der Mueve, Abajo Agacha) -->
+      <div class="touch-dpad-container">
+        <div class="touch-dpad" id="touchDpad">
+          <button id="touchUp" class="dpad-btn dpad-up" aria-label="Saltar / Mirar arriba">
+            <span class="dpad-arrow">▲</span>
+            <span class="dpad-sub">SALTO</span>
+          </button>
+          <button id="touchLeft" class="dpad-btn dpad-left" aria-label="Izquierda">◀</button>
+          <div class="dpad-center"></div>
+          <button id="touchRight" class="dpad-btn dpad-right" aria-label="Derecha">▶</button>
+          <button id="touchDown" class="dpad-btn dpad-down" aria-label="Agacharse">▼</button>
+        </div>
+      </div>
+
+      <!-- Botón de Acción Derecho: Solo LENGUA (Salto integrado en flecha arriba) -->
+      <div class="touch-group touch-group-right">
+        <button id="touchTongue" class="touch-btn touch-btn-action touch-btn-tongue" aria-label="Lenguazo">
+          <span class="touch-icon">👅</span>
+          <span class="touch-label">LENGUA</span>
+        </button>
+        <!-- Elemento oculto para compatibilidad con suites de pruebas -->
+        <button id="touchJump" class="hidden" style="display:none;" aria-hidden="true"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aviso de Rotación de Pantalla (Orientación Móvil) -->
+  <div id="rotateNotice" class="rotate-notice hidden">
+    <div class="rotate-notice-box animate-pop">
+      <div class="rotate-icon">📱 ↷</div>
+      <h3 class="rotate-title">GIRA TU MÓVIL EN HORIZONTAL</h3>
+      <p class="rotate-text">Para disfrutar de una vista panorámica del estanque y control ergonómico con ambos pulgares.</p>
+      <div class="rotate-actions">
+        <button id="btnForceLandscape" class="btn-play btn-sm">📱 Bloquear Horizontal</button>
+        <button id="btnDismissRotate" class="btn-secondary btn-sm">Jugar en Vertical</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (Compat v10) para Ranking Global en la nube -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+node_modules/
+*.log
+**/build/
+**/.gradle/
+**/local.properties
+game.phase1.backup.js
+test_rules.js

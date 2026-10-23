@@ -313,6 +313,7 @@ class LilyPad {
 // --- MOSCAS Y BICHOS VOLADORES ---
 class Bug {
   constructor(type, x, y, bounds) {
+    this.id = 'b_' + Math.random().toString(36).substring(2, 9);
     this.type = type; // 'common', 'golden', 'dragonfly', 'wasp'
     this.x = x;
     this.y = y;
@@ -491,6 +492,14 @@ class Frog {
     this.stunTimer = 0;
     this.invulnerableTimer = 0;
 
+    // Configuración IA / CPU
+    this.isCPU = false;
+    this.cpuDecisionTimer = 0;
+    this.cpuTarget = null;
+    this.cpuJumpTimer = 0;
+    this.cpuReactionTimer = 0;
+    this.cpuShootCooldown = 0;
+
     // Mecánica de la Lengua
     this.tongue = {
       active: false,
@@ -529,7 +538,7 @@ class Frog {
     return false;
   }
 
-  shootTongue(keys) {
+  shootTongue(keys, targetDir = null) {
     if (this.stunTimer > 0) return;
     if (this.tongue.active) return; // Ya está disparando
 
@@ -544,7 +553,11 @@ class Frog {
     let dx = this.facing;
     let dy = 0;
 
-    if (this.isLookingUp) {
+    if (targetDir && (targetDir.dx !== 0 || targetDir.dy !== 0)) {
+      dx = targetDir.dx;
+      dy = targetDir.dy;
+      if (dx !== 0) this.facing = dx > 0 ? 1 : -1;
+    } else if (this.isLookingUp) {
       dy = -1;
       // Puede disparar recto arriba o diagonal
       if (this.vx !== 0) {
@@ -570,7 +583,157 @@ class Frog {
     audio.playTongue();
   }
 
-  update(dt, keys, lilyPads, bugs, otherFrog, gameBounds, particles, floatingTexts) {
+  // --- INTELIGENCIA ARTIFICIAL DE LA CPU (OPONENTE BOT) ---
+  updateCPU(dt, lilyPads, bugs, otherFrog, gameBounds, difficulty) {
+    if (this.stunTimer > 0) {
+      this.vx *= Math.pow(0.01, dt);
+      return;
+    }
+
+    this.cpuDecisionTimer = (this.cpuDecisionTimer || 0) - dt;
+    this.cpuJumpTimer = (this.cpuJumpTimer || 0) - dt;
+    this.cpuShootCooldown = (this.cpuShootCooldown || 0) - dt;
+
+    // Frecuencia de decisión según dificultad (en Caos reacciona antes)
+    const interval = difficulty === 'hard' ? 0.08 : (difficulty === 'normal' ? 0.16 : 0.26);
+
+    if (this.cpuDecisionTimer <= 0) {
+      this.cpuDecisionTimer = interval;
+
+      // 1. Evaluación táctica de insectos en el estanque
+      let bestTarget = null;
+      let bestScore = -9999;
+
+      // Probabilidad de esquivar avispas picadoras
+      const avoidWaspRatio = difficulty === 'hard' ? 0.96 : (difficulty === 'normal' ? 0.82 : 0.60);
+
+      for (const bug of bugs) {
+        if (!bug.alive) continue;
+        const dist = Math.hypot(bug.x - this.x, bug.y - this.y);
+        if (dist > 380) continue; // fuera de radio de acción
+
+        let value = bug.points;
+        if (bug.isHazard) {
+          if (Math.random() < avoidWaspRatio) {
+            continue; // Evitar / ignorar la avispa por completo
+          } else {
+            value = 1; // Error de cálculo casual (se confunde e intenta cazarla)
+          }
+        }
+
+        // Ponderar recompensa y cercanía
+        const targetWeight = value * 35 - dist * 0.9;
+        if (targetWeight > bestScore) {
+          bestScore = targetWeight;
+          bestTarget = bug;
+        }
+      }
+
+      // Evaluar atacar al rival con "¡BONK!" si está cerca y a tiro
+      if (otherFrog && Math.hypot(otherFrog.x - this.x, otherFrog.y - this.y) < 170) {
+        const bonkInterest = difficulty === 'hard' ? 65 : (difficulty === 'normal' ? 25 : 10);
+        if (bonkInterest > bestScore) {
+          bestTarget = otherFrog;
+        }
+      }
+
+      this.cpuTarget = bestTarget;
+    }
+
+    // 2. Ejecución motora y decisiones de acción
+    if (this.cpuTarget) {
+      const dx = this.cpuTarget.x - this.x;
+      const dy = this.cpuTarget.y - this.y;
+      const dist = Math.hypot(dx, dy);
+
+      // Mirar hacia donde está el objetivo
+      if (Math.abs(dx) > 12) {
+        this.facing = dx > 0 ? 1 : -1;
+      }
+
+      // Comprobar si puede lanzar la lengua con éxito
+      const inFront = (dx * this.facing) > 0;
+      const inRange = inFront && dist < (this.tongue.maxLength - 10) && !this.tongue.active;
+
+      if (inRange) {
+        // Altura del tiro
+        if (dy < -45) {
+          this.isLookingUp = true;
+          this.isCrouching = false;
+        } else if (dy > 30) {
+          this.isCrouching = true;
+          this.isLookingUp = false;
+        } else {
+          this.isLookingUp = false;
+          this.isCrouching = false;
+        }
+
+        // Si no está en cooldown de disparo
+        if (this.cpuShootCooldown <= 0) {
+          if (this.cpuReactionTimer === 0) {
+            // Iniciar temporizador de reacción humano antes de soltar la lengua
+            const reactionDelay = difficulty === 'hard' ? 0.08 : (difficulty === 'normal' ? 0.25 : 0.45);
+            this.cpuReactionTimer = reactionDelay;
+          } else {
+            this.cpuReactionTimer -= dt;
+            if (this.cpuReactionTimer <= 0) {
+              // Reacción completada: disparar según precisión
+              const accuracy = difficulty === 'hard' ? 0.88 : (difficulty === 'normal' ? 0.68 : 0.42);
+              if (Math.random() < accuracy) {
+                this.shootTongue();
+              }
+              this.cpuShootCooldown = difficulty === 'hard' ? 0.18 : (difficulty === 'normal' ? 0.38 : 0.65);
+              this.cpuReactionTimer = 0;
+            }
+          }
+        }
+      } else {
+        this.cpuReactionTimer = 0;
+        if (!this.tongue.active) {
+          this.isLookingUp = false;
+          this.isCrouching = false;
+        }
+      }
+
+      // Desplazamiento horizontal hacia la presa con velocidades calibradas
+      if (Math.abs(dx) > 28) {
+        let maxSpeed = 230;
+        if (difficulty === 'easy') maxSpeed = 180;
+        else if (difficulty === 'hard') maxSpeed = 310;
+        else maxSpeed = 230;
+
+        const speed = this.onGround ? maxSpeed : (maxSpeed * 0.85);
+        this.vx = (dx > 0 ? 1 : -1) * speed;
+      } else {
+        this.vx *= Math.pow(0.01, dt);
+      }
+
+      // Saltos inteligentes: si el objetivo está alto o en otro nenúfar
+      if (this.onGround && this.cpuJumpTimer <= 0) {
+        const needJumpHeight = dy < -65 && Math.abs(dx) < 150;
+        const targetFarAway = Math.abs(dx) > 95;
+        const jumpProbability = difficulty === 'hard' ? 0.22 : (difficulty === 'normal' ? 0.10 : 0.04);
+
+        if ((needJumpHeight || targetFarAway) && Math.random() < jumpProbability) {
+          this.jump();
+          this.cpuJumpTimer = difficulty === 'hard' ? 0.35 : (difficulty === 'normal' ? 0.6 : 0.9);
+        }
+      }
+    } else {
+      // Sin objetivo cercano: esperar en el nenúfar
+      this.vx *= Math.pow(0.01, dt);
+      this.isLookingUp = false;
+      this.isCrouching = false;
+
+      // Salto explorador ocasional
+      if (this.onGround && this.cpuJumpTimer <= 0 && Math.random() < 0.015) {
+        this.jump();
+        this.cpuJumpTimer = 0.8;
+      }
+    }
+  }
+
+  update(dt, keys, lilyPads, bugs, otherFrog, gameBounds, particles, floatingTexts, difficulty = 'normal', touchState = null) {
     // Timers de estados especiales
     if (this.stunTimer > 0) {
       this.stunTimer = Math.max(0, this.stunTimer - dt);
@@ -579,19 +742,47 @@ class Frog {
       this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
     }
 
-    // Input del Jugador (solo si no está aturdido)
-    if (this.stunTimer <= 0) {
+    // Control: CPU vs Humano (Teclado + Pantalla Táctil)
+    if (this.isCPU) {
+      this.updateCPU(dt, lilyPads, bugs, otherFrog, gameBounds, difficulty);
+    } else if (this.stunTimer <= 0) {
       let moveDir = 0;
       if (this.playerNum === 1) {
-        if (keys['KeyA']) moveDir -= 1;
-        if (keys['KeyD']) moveDir += 1;
-        this.isCrouching = !!keys['KeyS'];
-        this.isLookingUp = !!keys['KeyW'] && this.onGround && !keys['KeyA'] && !keys['KeyD'];
+        const touchLeft = touchState && touchState.left;
+        const touchRight = touchState && touchState.right;
+        const touchDown = touchState && touchState.down;
+        const touchUp = touchState && touchState.up;
+
+        if (keys['KeyA'] || touchLeft) moveDir -= 1;
+        if (keys['KeyD'] || touchRight) moveDir += 1;
+        this.isCrouching = !!keys['KeyS'] || touchDown;
+        this.isLookingUp = (!!keys['KeyW'] || touchUp) && this.onGround && !keys['KeyA'] && !keys['KeyD'] && !touchLeft && !touchRight;
+        if ((keys['KeyW'] || touchUp) && moveDir !== 0) {
+          this.isLookingUp = true;
+        }
       } else {
-        if (keys['ArrowLeft']) moveDir -= 1;
-        if (keys['ArrowRight']) moveDir += 1;
-        this.isCrouching = !!keys['ArrowDown'];
-        this.isLookingUp = !!keys['ArrowUp'] && this.onGround && !keys['ArrowLeft'] && !keys['ArrowRight'];
+        const touchLeft = touchState && touchState.left;
+        const touchRight = touchState && touchState.right;
+        const touchDown = touchState && touchState.down;
+        const touchUp = touchState && touchState.up;
+
+        if (keys && keys._isGuestInputs) {
+          if (keys.left) moveDir -= 1;
+          if (keys.right) moveDir += 1;
+          this.isCrouching = !!keys.down;
+          this.isLookingUp = !!keys.up && this.onGround && !keys.left && !keys.right;
+          if (keys.up && moveDir !== 0) {
+            this.isLookingUp = true;
+          }
+        } else {
+          if (keys['ArrowLeft'] || touchLeft) moveDir -= 1;
+          if (keys['ArrowRight'] || touchRight) moveDir += 1;
+          this.isCrouching = !!keys['ArrowDown'] || touchDown;
+          this.isLookingUp = (!!keys['ArrowUp'] || touchUp) && this.onGround && !keys['ArrowLeft'] && !keys['ArrowRight'] && !touchLeft && !touchRight;
+          if ((keys['ArrowUp'] || touchUp) && moveDir !== 0) {
+            this.isLookingUp = true;
+          }
+        }
       }
 
       if (moveDir !== 0) {
@@ -1094,10 +1285,43 @@ class CrazyFrogsGame {
     this.lbSelectedMode = 'time';
     this.lbCurrentScope = 'global';
 
+    // Elementos de Lobby Online (WebRTC P2P)
+    this.onlineLobbyMenu = document.getElementById('onlineLobbyMenu');
+    this.btnTabHost = document.getElementById('btnTabHost');
+    this.btnTabJoin = document.getElementById('btnTabJoin');
+    this.panelHost = document.getElementById('panelHost');
+    this.panelJoin = document.getElementById('panelJoin');
+    this.displayRoomCode = document.getElementById('displayRoomCode');
+    this.btnCopyRoomCode = document.getElementById('btnCopyRoomCode');
+    this.hostStatusBadge = document.getElementById('hostStatusBadge');
+    this.inputJoinCode = document.getElementById('inputJoinCode');
+    this.btnConnectToRoom = document.getElementById('btnConnectToRoom');
+    this.joinStatusBadge = document.getElementById('joinStatusBadge');
+    this.btnCloseOnlineLobby = document.getElementById('btnCloseOnlineLobby');
+    this.onlineHudBadge = document.getElementById('onlineHudBadge');
+    this.onlinePingDisplay = document.getElementById('onlinePingDisplay');
+
+    // Estado WebRTC 2P Online
+    this.isOnline = false;
+    this.onlineRole = null; // 'host' o 'guest'
+    this.onlineRoomId = null;
+    this.peerConnection = null;
+    this.dataChannel = null;
+    this.roomUnsubscribe = null;
+    this.candidatesUnsubscribe = null;
+    this.onlinePingInterval = null;
+    this.onlineLastPingTime = 0;
+    this.onlinePing = 0;
+    this.onlineStateSyncTimer = 0;
+    this.onlineWinner = null;
+    this.guestInputs = { left: false, right: false, up: false, down: false };
+    this.lastGuestSentInput = '';
+
     // Estado del juego
-    this.gameState = 'menu'; // 'menu', 'playing', 'paused', 'gameover', 'leaderboard'
+    this.gameState = 'menu'; // 'menu', 'playing', 'paused', 'gameover', 'leaderboard', 'online_lobby'
     this.gameMode = 'time'; // 'time', 'lives', 'race'
     this.difficulty = 'normal'; // 'easy', 'normal', 'hard'
+    this.opponentMode = 'cpu'; // 'cpu', 'local2p', o 'online2p'
 
     // Opciones del modo
     this.timeRemaining = 60;
@@ -1106,6 +1330,14 @@ class CrazyFrogsGame {
 
     // Teclas pulsadas
     this.keys = {};
+
+    // Estado de controles táctiles en pantalla (Móvil)
+    this.touchState = {
+      left: false,
+      right: false,
+      up: false,
+      down: false
+    };
 
     // Entidades
     this.p1 = null;
@@ -1121,10 +1353,13 @@ class CrazyFrogsGame {
 
     // Efecto de agua animada
     this.waterTime = 0;
+    this.dismissedRotateNotice = false;
 
     this.initFirebase();
     this.initPlayerNames();
     this.setupEventListeners();
+    this.setupTouchControls();
+    this.setupOrientationHandling();
     this.setupUI();
     this.initPond();
 
@@ -1194,6 +1429,31 @@ class CrazyFrogsGame {
       });
     }
 
+    // Selector de Oponente (1P vs CPU / 2P Local / 🌐 2P Online)
+    const oppBtns = document.querySelectorAll('#opponentSelector .pill-btn');
+    oppBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        oppBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.opponentMode = btn.dataset.opponent;
+        if (this.opponentMode === 'cpu') {
+          if (this.inputP2Name) {
+            this.inputP2Name.value = 'Ribbit Bot 🤖';
+          }
+        } else if (this.opponentMode === 'online2p') {
+          if (this.inputP2Name) {
+            this.inputP2Name.value = 'Rival Online 🌐';
+          }
+          this.openOnlineLobby();
+        } else {
+          if (this.inputP2Name && (this.inputP2Name.value === 'Ribbit Bot 🤖' || this.inputP2Name.value === 'Rival Online 🌐')) {
+            this.inputP2Name.value = 'Rana Coral';
+          }
+        }
+        this.syncPlayerNames();
+      });
+    });
+
     // Selectores de Modo
     const modeBtns = document.querySelectorAll('#modeSelector .pill-btn');
     modeBtns.forEach(btn => {
@@ -1205,12 +1465,22 @@ class CrazyFrogsGame {
     });
 
     // Selectores de Dificultad
+    const diffHints = {
+      easy: '🌿 Fácil: Rana rival relajada, ideal para aprender y practicar',
+      normal: '🦟 Normal: Duelo equilibrado y divertido',
+      hard: '🌪️ Caos: ¡Rana bot ultra rápida y despiadada!'
+    };
+    const diffHintEl = document.getElementById('diffHint');
+
     const diffBtns = document.querySelectorAll('#diffSelector .pill-btn');
     diffBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         diffBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.difficulty = btn.dataset.diff;
+        if (diffHintEl && diffHints[this.difficulty]) {
+          diffHintEl.textContent = diffHints[this.difficulty];
+        }
       });
     });
 
@@ -1236,11 +1506,80 @@ class CrazyFrogsGame {
       });
     });
 
+    // Pestañas y Acciones del Lobby 2P Online
+    if (this.btnTabHost) {
+      this.btnTabHost.addEventListener('click', () => {
+        this.switchOnlineTab('host');
+      });
+    }
+    if (this.btnTabJoin) {
+      this.btnTabJoin.addEventListener('click', () => {
+        this.switchOnlineTab('join');
+      });
+    }
+    if (this.btnCopyRoomCode) {
+      this.btnCopyRoomCode.addEventListener('click', async () => {
+        if (!this.onlineRoomId) return;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(this.onlineRoomId);
+          } else {
+            const temp = document.createElement('textarea');
+            temp.value = this.onlineRoomId;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+          }
+          this.showToast('📋 ¡Código ' + this.onlineRoomId + ' copiado al portapapeles!');
+        } catch (e) {
+          this.showToast('Código: ' + this.onlineRoomId);
+        }
+      });
+    }
+    if (this.btnConnectToRoom) {
+      this.btnConnectToRoom.addEventListener('click', () => {
+        const code = this.inputJoinCode ? this.inputJoinCode.value.trim().toUpperCase() : '';
+        this.joinOnlineRoom(code);
+      });
+    }
+    if (this.inputJoinCode) {
+      this.inputJoinCode.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+          const code = this.inputJoinCode.value.trim().toUpperCase();
+          this.joinOnlineRoom(code);
+        }
+      });
+    }
+    if (this.btnCloseOnlineLobby) {
+      this.btnCloseOnlineLobby.addEventListener('click', () => {
+        this.closeOnlineLobby();
+      });
+    }
+
     // Botones de acción
     document.getElementById('btnStartGame').addEventListener('click', () => {
       audio.init();
+      if (this.opponentMode === 'online2p' && !this.isOnline) {
+        this.openOnlineLobby();
+        return;
+      }
       this.startGame();
     });
+
+    const btnFs = document.getElementById('btnFullscreen');
+    if (btnFs) {
+      btnFs.addEventListener('click', () => {
+        this.requestLandscapeFullscreen();
+      });
+    }
+
+    const btnFsPause = document.getElementById('btnFullscreenPause');
+    if (btnFsPause) {
+      btnFsPause.addEventListener('click', () => {
+        this.requestLandscapeFullscreen();
+      });
+    }
 
     document.getElementById('btnResume').addEventListener('click', () => {
       this.resumeGame();
@@ -1251,14 +1590,25 @@ class CrazyFrogsGame {
     });
 
     document.getElementById('btnBackToMenu').addEventListener('click', () => {
+      if (this.isOnline) {
+        this.sendOnlinePacket({ t: 'D' });
+        this.cleanupOnlineConnection();
+      }
       this.showMenu();
     });
 
     document.getElementById('btnRematch').addEventListener('click', () => {
+      if (this.isOnline) {
+        this.sendOnlinePacket({ t: 'REMATCH' });
+      }
       this.startGame();
     });
 
     document.getElementById('btnGameOverToMenu').addEventListener('click', () => {
+      if (this.isOnline) {
+        this.sendOnlinePacket({ t: 'D' });
+        this.cleanupOnlineConnection();
+      }
       this.showMenu();
     });
 
@@ -1300,27 +1650,44 @@ class CrazyFrogsGame {
 
       this.keys[e.code] = true;
 
-      // Disparo de lengua Jugador 1: Tecla E, F o Espacio
-      if (this.gameState === 'playing' && (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Space')) {
-        e.preventDefault();
-        if (this.p1) this.p1.shootTongue(this.keys);
-      }
+      if (this.gameState === 'playing') {
+        if (this.isOnline && this.onlineRole === 'guest') {
+          // Si somos Invitado online, controlamos a Rana 2 y enviamos acciones por red
+          if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Space' || e.code === 'Enter' || e.code === 'ShiftRight' || e.code === 'ShiftLeft' || e.code === 'KeyL') {
+            e.preventDefault();
+            this.sendGuestAction({ t: 'T' });
+            return;
+          }
+          if (e.code === 'KeyW' || e.code === 'ArrowUp') {
+            e.preventDefault();
+            this.sendGuestAction({ t: 'J' });
+            return;
+          }
+        } else {
+          // Modo Local / Host
+          // Disparo de lengua Jugador 1: Tecla E, F o Espacio
+          if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Space') {
+            e.preventDefault();
+            if (this.p1) this.p1.shootTongue(this.keys);
+          }
 
-      // Salto Jugador 1: Tecla W
-      if (this.gameState === 'playing' && e.code === 'KeyW') {
-        if (this.p1) this.p1.jump();
-      }
+          // Salto Jugador 1: Tecla W
+          if (e.code === 'KeyW') {
+            if (this.p1) this.p1.jump();
+          }
 
-      // Disparo de lengua Jugador 2: Enter, Shift (Left/Right), Numpad0, o tecla L
-      if (this.gameState === 'playing' && (e.code === 'Enter' || e.code === 'ShiftRight' || e.code === 'ShiftLeft' || e.code === 'Numpad0' || e.code === 'KeyL')) {
-        e.preventDefault();
-        if (this.p2) this.p2.shootTongue(this.keys);
-      }
+          // Disparo de lengua Jugador 2: Enter, Shift (Left/Right), Numpad0, o tecla L
+          if (e.code === 'Enter' || e.code === 'ShiftRight' || e.code === 'ShiftLeft' || e.code === 'Numpad0' || e.code === 'KeyL') {
+            e.preventDefault();
+            if (this.p2) this.p2.shootTongue(this.keys);
+          }
 
-      // Salto Jugador 2: Flecha Arriba
-      if (this.gameState === 'playing' && e.code === 'ArrowUp') {
-        e.preventDefault();
-        if (this.p2) this.p2.jump();
+          // Salto Jugador 2: Flecha Arriba
+          if (e.code === 'ArrowUp') {
+            e.preventDefault();
+            if (this.p2) this.p2.jump();
+          }
+        }
       }
 
       // Pausa rápida con Escape o P
@@ -1343,6 +1710,315 @@ class CrazyFrogsGame {
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false;
     });
+  }
+
+  setupTouchControls() {
+    const bindTouch = (elemId, onStart, onEnd) => {
+      const el = document.getElementById(elemId);
+      if (!el) return;
+
+      const handleStart = (e) => {
+        if (e && e.cancelable) e.preventDefault();
+        el.classList.add('active');
+        onStart();
+      };
+
+      const handleEnd = (e) => {
+        if (e && e.cancelable) e.preventDefault();
+        el.classList.remove('active');
+        if (onEnd) onEnd();
+      };
+
+      el.addEventListener('touchstart', handleStart, { passive: false });
+      el.addEventListener('touchend', handleEnd, { passive: false });
+      el.addEventListener('touchcancel', handleEnd, { passive: false });
+
+      el.addEventListener('mousedown', handleStart);
+      el.addEventListener('mouseup', handleEnd);
+      el.addEventListener('mouseleave', handleEnd);
+    };
+
+    // Botones individuales (compatibilidad directa y testing)
+    bindTouch('touchLeft',
+      () => { this.touchState.left = true; },
+      () => { this.touchState.left = false; }
+    );
+
+    bindTouch('touchRight',
+      () => { this.touchState.right = true; },
+      () => { this.touchState.right = false; }
+    );
+
+    bindTouch('touchDown',
+      () => { this.touchState.down = true; },
+      () => { this.touchState.down = false; }
+    );
+
+    bindTouch('touchUp',
+      () => {
+        this.touchState.up = true;
+        if (this.gameState === 'playing') {
+          if (this.isOnline && this.onlineRole === 'guest') {
+            this.sendGuestAction({ t: 'J' });
+          } else if (this.p1) {
+            this.p1.jump();
+          }
+        }
+      },
+      () => { this.touchState.up = false; }
+    );
+
+    bindTouch('touchJump',
+      () => {
+        if (this.gameState === 'playing') {
+          if (this.isOnline && this.onlineRole === 'guest') {
+            this.sendGuestAction({ t: 'J' });
+          } else if (this.p1) {
+            this.p1.jump();
+          }
+        }
+      },
+      () => {}
+    );
+
+    bindTouch('touchTongue',
+      () => {
+        if (this.gameState === 'playing') {
+          if (this.isOnline && this.onlineRole === 'guest') {
+            this.sendGuestAction({ t: 'T' });
+          } else if (this.p1) {
+            this.p1.shootTongue(this.keys);
+          }
+        }
+      },
+      () => {}
+    );
+
+    // Botón de Pausa Rápida para Móvil
+    const pauseBtn = document.getElementById('touchPauseBtn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (this.gameState === 'playing') {
+          this.pauseGame();
+        } else if (this.gameState === 'paused') {
+          this.resumeGame();
+        }
+      });
+    }
+
+    // Soporte de deslizamiento continuo sobre el D-Pad (Touch Drag sin levantar el dedo)
+    const dpad = document.getElementById('touchDpad');
+    if (dpad && typeof dpad.getBoundingClientRect === 'function') {
+      let dpadTouchId = null;
+
+      const updateDpadFromCoords = (clientX, clientY) => {
+        const rect = dpad.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = clientX - cx;
+        const dy = clientY - cy;
+        const dist = Math.hypot(dx, dy);
+
+        const deadZone = 10;
+        const threshold = 16;
+
+        let left = false;
+        let right = false;
+        let up = false;
+        let down = false;
+
+        if (dist > deadZone) {
+          if (dx < -threshold) left = true;
+          if (dx > threshold) right = true;
+          if (dy < -threshold) up = true;
+          if (dy > threshold) down = true;
+        }
+
+        if (up && !this.touchState.up) {
+          if (this.gameState === 'playing' && this.p1) {
+            this.p1.jump();
+          }
+        }
+
+        this.touchState.left = left;
+        this.touchState.right = right;
+        this.touchState.up = up;
+        this.touchState.down = down;
+
+        const bL = document.getElementById('touchLeft');
+        const bR = document.getElementById('touchRight');
+        const bU = document.getElementById('touchUp');
+        const bD = document.getElementById('touchDown');
+
+        if (bL && bL.classList) bL.classList.toggle('active', left);
+        if (bR && bR.classList) bR.classList.toggle('active', right);
+        if (bU && bU.classList) bU.classList.toggle('active', up);
+        if (bD && bD.classList) bD.classList.toggle('active', down);
+      };
+
+      const resetDpad = () => {
+        dpadTouchId = null;
+        this.touchState.left = false;
+        this.touchState.right = false;
+        this.touchState.up = false;
+        this.touchState.down = false;
+        ['touchLeft', 'touchRight', 'touchUp', 'touchDown'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && el.classList) el.classList.remove('active');
+        });
+      };
+
+      dpad.addEventListener('touchstart', (e) => {
+        if (e.cancelable) e.preventDefault();
+        const touch = e.targetTouches && e.targetTouches[0];
+        if (touch) {
+          dpadTouchId = touch.identifier;
+          updateDpadFromCoords(touch.clientX, touch.clientY);
+        }
+      }, { passive: false });
+
+      dpad.addEventListener('touchmove', (e) => {
+        if (e.cancelable) e.preventDefault();
+        if (e.changedTouches) {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === dpadTouchId) {
+              updateDpadFromCoords(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+              break;
+            }
+          }
+        }
+      }, { passive: false });
+
+      dpad.addEventListener('touchend', (e) => {
+        if (e.changedTouches) {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === dpadTouchId) {
+              resetDpad();
+              break;
+            }
+          }
+        }
+      }, { passive: false });
+
+      dpad.addEventListener('touchcancel', resetDpad, { passive: false });
+    }
+
+    // Tap-to-Shoot en el estanque (Tocar la pantalla o un insecto para disparar la lengua hacia allí)
+    if (this.canvas) {
+      const handlePointerShoot = (clientX, clientY) => {
+        if (this.gameState !== 'playing') return;
+        if (typeof this.canvas.getBoundingClientRect !== 'function') return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+          // Si el toque cae en las esquinas inferiores donde descansan los pulgares, no interferir
+          const relX = (clientX - rect.left) / rect.width;
+          const relY = (clientY - rect.top) / rect.height;
+          if (relY > 0.65 && (relX < 0.28 || relX > 0.72)) {
+            return;
+          }
+
+          const scaleX = this.canvas.width / rect.width;
+          const scaleY = this.canvas.height / rect.height;
+          const canvasX = (clientX - rect.left) * scaleX;
+          const canvasY = (clientY - rect.top) * scaleY;
+
+          if (this.isOnline && this.onlineRole === 'guest') {
+            if (this.p2) {
+              const mouthX = this.p2.x + (this.p2.facing * this.p2.width * 0.35);
+              const mouthY = this.p2.y - this.p2.height * 0.1;
+              const dx = canvasX - mouthX;
+              const dy = canvasY - mouthY;
+              this.sendGuestAction({ t: 'T', dir: { dx, dy } });
+            }
+          } else if (this.p1) {
+            const mouthX = this.p1.x + (this.p1.facing * this.p1.width * 0.35);
+            const mouthY = this.p1.y - this.p1.height * 0.1;
+            const dx = canvasX - mouthX;
+            const dy = canvasY - mouthY;
+            this.p1.shootTongue(this.keys, { dx, dy });
+          }
+        }
+      };
+
+      this.canvas.addEventListener('touchstart', (e) => {
+        if (e.changedTouches && e.changedTouches[0]) {
+          const t = e.changedTouches[0];
+          handlePointerShoot(t.clientX, t.clientY);
+        }
+      }, { passive: true });
+
+      this.canvas.addEventListener('mousedown', (e) => {
+        handlePointerShoot(e.clientX, e.clientY);
+      });
+    }
+  }
+
+  // --- CONTROL DE PANTALLA COMPLETA Y BLOQUEO DE ORIENTACIÓN HORIZONTAL ---
+  async requestLandscapeFullscreen() {
+    try {
+      const elem = document.documentElement;
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (elem.requestFullscreen) {
+          await elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+          await elem.webkitRequestFullscreen();
+        }
+      }
+    } catch (err) {
+      // Ignorar si el usuario deniega o el navegador no lo soporta
+    }
+
+    try {
+      if (window.screen && screen.orientation && screen.orientation.lock) {
+        await screen.orientation.lock('landscape');
+      }
+    } catch (err) {
+      // Ignorar si el dispositivo no permite bloquear orientación
+    }
+  }
+
+  setupOrientationHandling() {
+    const rotateNotice = document.getElementById('rotateNotice');
+    const btnForceLandscape = document.getElementById('btnForceLandscape');
+    const btnDismissRotate = document.getElementById('btnDismissRotate');
+
+    const checkOrientation = () => {
+      if (!rotateNotice || this.dismissedRotateNotice) return;
+      const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+      const isMobile = typeof window !== 'undefined' && (
+        ('ontouchstart' in window) || 
+        (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || 
+        window.innerWidth < 850
+      );
+
+      if (isPortrait && isMobile) {
+        rotateNotice.classList.remove('hidden');
+      } else {
+        rotateNotice.classList.add('hidden');
+      }
+    };
+
+    if (btnForceLandscape) {
+      btnForceLandscape.addEventListener('click', async () => {
+        await this.requestLandscapeFullscreen();
+        if (rotateNotice) rotateNotice.classList.add('hidden');
+      });
+    }
+
+    if (btnDismissRotate) {
+      btnDismissRotate.addEventListener('click', () => {
+        this.dismissedRotateNotice = true;
+        if (rotateNotice) rotateNotice.classList.add('hidden');
+      });
+    }
+
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('resize', checkOrientation);
+      window.addEventListener('orientationchange', checkOrientation);
+      setTimeout(checkOrientation, 350);
+    }
   }
 
   showToast(text, durationMs = 2000) {
@@ -1382,7 +2058,9 @@ class CrazyFrogsGame {
   }
 
   startGame() {
+    this.requestLandscapeFullscreen();
     this.gameState = 'playing';
+    document.body.classList.add('in-game');
     this.mainMenu.classList.add('hidden');
     this.pauseMenu.classList.add('hidden');
     this.gameOverMenu.classList.add('hidden');
@@ -1392,9 +2070,22 @@ class CrazyFrogsGame {
 
     this.initPond();
 
-    // Obtener nombres personalizados
-    const p1Name = (this.inputP1Name ? this.inputP1Name.value.trim() : '') || 'Rana Verde';
-    const p2Name = (this.inputP2Name ? this.inputP2Name.value.trim() : '') || 'Rana Coral';
+    // Obtener nombres personalizados y modo de oponente
+    const isCPU = this.opponentMode === 'cpu';
+    const isOnline = this.isOnline;
+    this.onlineWinner = null;
+
+    let p1Name = (this.inputP1Name ? this.inputP1Name.value.trim() : '') || 'Rana Verde';
+    let p2Name = (this.inputP2Name ? this.inputP2Name.value.trim() : '');
+    if (!p2Name) {
+      if (isCPU) p2Name = 'Ribbit Bot 🤖';
+      else if (isOnline) p2Name = 'Rival Online 🌐';
+      else p2Name = 'Rana Coral';
+    }
+
+    if (isOnline && this.onlineHudBadge) {
+      this.onlineHudBadge.classList.remove('hidden');
+    }
 
     // Crear Ranas
     const p1Pad = this.lilyPads[0];
@@ -1402,6 +2093,7 @@ class CrazyFrogsGame {
 
     this.p1 = new Frog(1, p1Pad.x, p1Pad.y - 30, p1Name);
     this.p2 = new Frog(2, p2Pad.x, p2Pad.y - 30, p2Name);
+    this.p2.isCPU = isCPU && !isOnline;
 
     if (this.gameMode === 'lives') {
       this.p1.lives = 3;
@@ -1415,10 +2107,12 @@ class CrazyFrogsGame {
     this.floatingTexts = [];
     this.bugSpawnTimer = 0;
 
-    // Spawn inicial de moscas
-    const initialBugs = this.difficulty === 'easy' ? 5 : 8;
-    for (let i = 0; i < initialBugs; i++) {
-      this.spawnBug();
+    // Spawn inicial de moscas (solo Host o local)
+    if (!isOnline || this.onlineRole === 'host') {
+      const initialBugs = this.difficulty === 'easy' ? 5 : 8;
+      for (let i = 0; i < initialBugs; i++) {
+        this.spawnBug();
+      }
     }
 
     audio.startBgm();
@@ -1427,6 +2121,7 @@ class CrazyFrogsGame {
 
   pauseGame() {
     this.gameState = 'paused';
+    document.body.classList.remove('in-game');
     this.pauseMenu.classList.remove('hidden');
     this.uiOverlay.style.background = 'rgba(0, 0, 0, 0.45)';
     audio.stopBgm();
@@ -1434,6 +2129,7 @@ class CrazyFrogsGame {
 
   resumeGame() {
     this.gameState = 'playing';
+    document.body.classList.add('in-game');
     this.pauseMenu.classList.add('hidden');
     this.uiOverlay.style.background = 'transparent';
     audio.startBgm();
@@ -1441,6 +2137,7 @@ class CrazyFrogsGame {
 
   showMenu() {
     this.gameState = 'menu';
+    document.body.classList.remove('in-game');
     this.mainMenu.classList.remove('hidden');
     this.pauseMenu.classList.add('hidden');
     this.gameOverMenu.classList.add('hidden');
@@ -1721,7 +2418,34 @@ class CrazyFrogsGame {
   }
 
   endGame(winner) {
+    if (this.isOnline && this.onlineRole === 'host') {
+      this.onlineWinner = winner;
+      this.sendOnlinePacket({
+        t: 'S',
+        winner: winner,
+        tRem: 0,
+        p1: {
+          x: Math.round(this.p1.x),
+          y: Math.round(this.p1.y),
+          score: this.p1.score,
+          lives: this.p1.lives,
+          stun: 0,
+          tAct: false
+        },
+        p2: {
+          x: Math.round(this.p2.x),
+          y: Math.round(this.p2.y),
+          score: this.p2.score,
+          lives: this.p2.lives,
+          stun: 0,
+          tAct: false
+        },
+        bugs: []
+      });
+    }
+
     this.gameState = 'gameover';
+    document.body.classList.remove('in-game');
     audio.stopBgm();
     audio.playVictory();
 
@@ -1808,63 +2532,137 @@ class CrazyFrogsGame {
     // Actualizar nenúfares
     this.lilyPads.forEach(pad => pad.update(dt));
 
-    // Contador de tiempo (Modo Tiempo)
-    if (this.gameMode === 'time') {
-      this.timeRemaining -= dt;
-      if (this.timeRemaining <= 0) {
-        this.timeRemaining = 0;
-        // Evaluar ganador por puntuación
-        if (this.p1.score > this.p2.score) this.endGame(1);
-        else if (this.p2.score > this.p1.score) this.endGame(2);
-        else this.endGame('draw');
-        return;
+    // Sincronización de entradas del Invitado hacia el Host
+    if (this.isOnline && this.onlineRole === 'guest') {
+      const left = !!(this.keys['KeyA'] || this.keys['ArrowLeft'] || this.touchState.left);
+      const right = !!(this.keys['KeyD'] || this.keys['ArrowRight'] || this.touchState.right);
+      const up = !!(this.keys['KeyW'] || this.keys['ArrowUp'] || this.touchState.up);
+      const down = !!(this.keys['KeyS'] || this.keys['ArrowDown'] || this.touchState.down);
+
+      const inputKey = `${left}|${right}|${up}|${down}`;
+      if (inputKey !== this.lastGuestSentInput) {
+        this.lastGuestSentInput = inputKey;
+        this.sendGuestAction({ t: 'I', left, right, up, down });
       }
     }
 
-    // Comprobar condiciones de victoria para Modo Vidas
-    if (this.gameMode === 'lives') {
-      if (this.p1.lives <= 0 && this.p2.lives <= 0) {
-        this.endGame('draw');
-        return;
-      } else if (this.p1.lives <= 0) {
-        this.endGame(2);
-        return;
-      } else if (this.p2.lives <= 0) {
-        this.endGame(1);
-        return;
+    // Contador de tiempo (Modo Tiempo) - Solo el Host o partida local evalúa el tiempo y victoria
+    if (!this.isOnline || this.onlineRole === 'host') {
+      if (this.gameMode === 'time') {
+        this.timeRemaining -= dt;
+        if (this.timeRemaining <= 0) {
+          this.timeRemaining = 0;
+          if (this.p1.score > this.p2.score) this.endGame(1);
+          else if (this.p2.score > this.p1.score) this.endGame(2);
+          else this.endGame('draw');
+          return;
+        }
       }
+
+      // Comprobar condiciones de victoria para Modo Vidas
+      if (this.gameMode === 'lives') {
+        if (this.p1.lives <= 0 && this.p2.lives <= 0) {
+          this.endGame('draw');
+          return;
+        } else if (this.p1.lives <= 0) {
+          this.endGame(2);
+          return;
+        } else if (this.p2.lives <= 0) {
+          this.endGame(1);
+          return;
+        }
+      }
+
+      // Comprobar condiciones de victoria para Modo Carrera
+      if (this.gameMode === 'race') {
+        if (this.p1.score >= this.maxScoreTarget) {
+          this.endGame(1);
+          return;
+        }
+        if (this.p2.score >= this.maxScoreTarget) {
+          this.endGame(2);
+          return;
+        }
+      }
+
+      // Generar nuevas moscas
+      this.bugSpawnTimer += dt;
+      const maxBugs = this.difficulty === 'easy' ? 6 : this.difficulty === 'normal' ? 9 : 12;
+      const spawnRate = this.difficulty === 'hard' ? 1.0 : 1.4;
+
+      if (this.bugSpawnTimer >= spawnRate && this.bugs.length < maxBugs) {
+        this.bugSpawnTimer = 0;
+        this.spawnBug();
+      }
+
+      // Actualizar moscas
+      this.bugs = this.bugs.filter(b => b.alive);
+      this.bugs.forEach(bug => bug.update(dt));
     }
 
-    // Comprobar condiciones de victoria para Modo Carrera
-    if (this.gameMode === 'race') {
-      if (this.p1.score >= this.maxScoreTarget) {
-        this.endGame(1);
-        return;
-      }
-      if (this.p2.score >= this.maxScoreTarget) {
-        this.endGame(2);
-        return;
-      }
-    }
-
-    // Generar nuevas moscas
-    this.bugSpawnTimer += dt;
-    const maxBugs = this.difficulty === 'easy' ? 6 : this.difficulty === 'normal' ? 9 : 12;
-    const spawnRate = this.difficulty === 'hard' ? 1.0 : 1.4;
-
-    if (this.bugSpawnTimer >= spawnRate && this.bugs.length < maxBugs) {
-      this.bugSpawnTimer = 0;
-      this.spawnBug();
-    }
-
-    // Actualizar moscas
-    this.bugs = this.bugs.filter(b => b.alive);
-    this.bugs.forEach(bug => bug.update(dt));
-
-    // Actualizar ranas
+    // Actualizar ranas (Host aplica guestInputs a P2; Guest usa touchState en P2)
     const bounds = { width: this.canvas.width, height: this.canvas.height };
-    this.p1.update(dt, this.keys, this.lilyPads, this.bugs, this.p2, bounds, this.particles, this.floatingTexts);
-    this.p2.update(dt, this.keys, this.lilyPads, this.bugs, this.p1, bounds, this.particles, this.floatingTexts);
+    const p1Touch = (this.isOnline && this.onlineRole === 'guest') ? null : this.touchState;
+    const p2Touch = (this.isOnline && this.onlineRole === 'guest') ? this.touchState : null;
+    const p2Keys = (this.isOnline && this.onlineRole === 'host')
+      ? { ...this.guestInputs, _isGuestInputs: true }
+      : this.keys;
+
+    this.p1.update(dt, this.keys, this.lilyPads, this.bugs, this.p2, bounds, this.particles, this.floatingTexts, this.difficulty, p1Touch);
+    this.p2.update(dt, p2Keys, this.lilyPads, this.bugs, this.p1, bounds, this.particles, this.floatingTexts, this.difficulty, p2Touch);
+
+    // Si somos Host en 2P Online, transmitir instantánea de estado a 30 FPS (~33ms)
+    if (this.isOnline && this.onlineRole === 'host' && this.dataChannel && this.dataChannel.readyState === 'open') {
+      this.onlineStateSyncTimer = (this.onlineStateSyncTimer || 0) + dt;
+      if (this.onlineStateSyncTimer >= 0.033) {
+        this.onlineStateSyncTimer = 0;
+        const snapshot = {
+          t: 'S',
+          tRem: Math.round(this.timeRemaining * 10) / 10,
+          p1: {
+            x: Math.round(this.p1.x),
+            y: Math.round(this.p1.y),
+            vx: Math.round(this.p1.vx),
+            vy: Math.round(this.p1.vy),
+            facing: this.p1.facing,
+            score: this.p1.score,
+            lives: this.p1.lives,
+            stun: Math.round(this.p1.stunTimer * 10) / 10,
+            tAct: this.p1.tongue.active,
+            tLen: Math.round(this.p1.tongue.length),
+            tDirX: Math.round(this.p1.tongue.dirX * 100) / 100,
+            tDirY: Math.round(this.p1.tongue.dirY * 100) / 100,
+            tState: this.p1.tongue.state,
+            cBug: this.p1.tongue.caughtBug ? { id: this.p1.tongue.caughtBug.id, type: this.p1.tongue.caughtBug.type } : null
+          },
+          p2: {
+            x: Math.round(this.p2.x),
+            y: Math.round(this.p2.y),
+            vx: Math.round(this.p2.vx),
+            vy: Math.round(this.p2.vy),
+            facing: this.p2.facing,
+            score: this.p2.score,
+            lives: this.p2.lives,
+            stun: Math.round(this.p2.stunTimer * 10) / 10,
+            tAct: this.p2.tongue.active,
+            tLen: Math.round(this.p2.tongue.length),
+            tDirX: Math.round(this.p2.tongue.dirX * 100) / 100,
+            tDirY: Math.round(this.p2.tongue.dirY * 100) / 100,
+            tState: this.p2.tongue.state,
+            cBug: this.p2.tongue.caughtBug ? { id: this.p2.tongue.caughtBug.id, type: this.p2.tongue.caughtBug.type } : null
+          },
+          bugs: this.bugs.map(b => ({
+            id: b.id,
+            type: b.type,
+            x: Math.round(b.x),
+            y: Math.round(b.y),
+            alive: b.alive
+          })),
+          winner: this.onlineWinner !== undefined ? this.onlineWinner : null
+        };
+        this.sendOnlinePacket(snapshot);
+      }
+    }
 
     // Actualizar partículas y textos
     this.particles = this.particles.filter(p => p.update(dt));
@@ -2043,6 +2841,507 @@ class CrazyFrogsGame {
     }
 
     ctx.restore();
+  }
+
+  // ============================================================================
+  // NETWORKING 2P ONLINE (WebRTC P2P + Firestore Signaling)
+  // ============================================================================
+  openOnlineLobby() {
+    if (!this.onlineLobbyMenu) return;
+    this.gameState = 'online_lobby';
+    this.onlineLobbyMenu.classList.remove('hidden');
+    if (this.mainMenu) this.mainMenu.classList.add('hidden');
+    if (this.pauseMenu) this.pauseMenu.classList.add('hidden');
+    if (this.gameOverMenu) this.gameOverMenu.classList.add('hidden');
+    if (this.leaderboardMenu) this.leaderboardMenu.classList.add('hidden');
+    this.uiOverlay.style.background = 'rgba(0, 0, 0, 0.7)';
+    this.switchOnlineTab('host');
+  }
+
+  closeOnlineLobby() {
+    if (!this.onlineLobbyMenu) return;
+    this.onlineLobbyMenu.classList.add('hidden');
+    this.cleanupOnlineConnection();
+    this.showMenu();
+  }
+
+  switchOnlineTab(tab) {
+    if (tab === 'host') {
+      if (this.btnTabHost) this.btnTabHost.classList.add('active');
+      if (this.btnTabJoin) this.btnTabJoin.classList.remove('active');
+      if (this.panelHost) this.panelHost.classList.remove('hidden');
+      if (this.panelJoin) this.panelJoin.classList.add('hidden');
+      if (!this.onlineRoomId || this.onlineRole !== 'host') {
+        this.createOnlineRoom();
+      }
+    } else {
+      if (this.btnTabJoin) this.btnTabJoin.classList.add('active');
+      if (this.btnTabHost) this.btnTabHost.classList.remove('active');
+      if (this.panelJoin) this.panelJoin.classList.remove('hidden');
+      if (this.panelHost) this.panelHost.classList.add('hidden');
+      if (this.onlineRole === 'host') {
+        this.cleanupOnlineConnection();
+      }
+      if (this.inputJoinCode) {
+        this.inputJoinCode.focus();
+      }
+    }
+  }
+
+  updateHostStatus(text, badgeClass = 'status-waiting') {
+    if (!this.hostStatusBadge) return;
+    this.hostStatusBadge.textContent = text;
+    this.hostStatusBadge.className = `status-badge ${badgeClass}`;
+  }
+
+  updateJoinStatus(text, badgeClass = 'status-idle') {
+    if (!this.joinStatusBadge) return;
+    this.joinStatusBadge.textContent = text;
+    this.joinStatusBadge.className = `status-badge ${badgeClass}`;
+  }
+
+  async createOnlineRoom() {
+    this.cleanupOnlineConnection();
+    if (!this.cloudEnabled || !this.firestore) {
+      this.updateHostStatus('⚠️ Firestore no conectado (revisa firebase-config.js)', 'status-error');
+      return;
+    }
+
+    this.onlineRole = 'host';
+    const codeNum = Math.floor(10 + Math.random() * 90);
+    this.onlineRoomId = 'FROG' + codeNum;
+    if (this.displayRoomCode) this.displayRoomCode.textContent = this.onlineRoomId;
+    this.updateHostStatus('⏳ Creando sala en el pantano...', 'status-waiting');
+
+    try {
+      const rtcConfig = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      };
+
+      this.peerConnection = new RTCPeerConnection(rtcConfig);
+      this.setupPeerConnectionListeners();
+
+      this.dataChannel = this.peerConnection.createDataChannel('crazyFrogsNet', {
+        ordered: false,
+        maxRetransmits: 0
+      });
+      this.setupDataChannel(this.dataChannel);
+
+      const roomRef = this.firestore.collection('rooms').doc(this.onlineRoomId);
+      const candidatesCol = roomRef.collection('candidates');
+
+      this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          candidatesCol.add({
+            candidate: JSON.stringify(event.candidate.toJSON()),
+            type: 'host',
+            timestamp: Date.now()
+          }).catch(() => {});
+        }
+      };
+
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+
+      await roomRef.set({
+        roomId: this.onlineRoomId,
+        status: 'waiting_guest',
+        hostOffer: JSON.stringify(offer),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      this.updateHostStatus(`⏳ Esperando a que tu rival se una con el código ${this.onlineRoomId}...`, 'status-waiting');
+
+      // Escuchar respuesta SDP del invitado
+      this.roomUnsubscribe = roomRef.onSnapshot(async (snapshot) => {
+        const data = snapshot.data();
+        if (!data) return;
+
+        if (this.peerConnection && !this.peerConnection.currentRemoteDescription && data.guestAnswer) {
+          this.updateHostStatus('🤝 Negociando enlace directo P2P...', 'status-waiting');
+          try {
+            const answer = new RTCSessionDescription(JSON.parse(data.guestAnswer));
+            await this.peerConnection.setRemoteDescription(answer);
+          } catch (e) {
+            console.warn('Error al establecer RemoteDescription:', e);
+          }
+        }
+      });
+
+      // Escuchar candidatos ICE del invitado
+      this.candidatesUnsubscribe = candidatesCol.where('type', '==', 'guest').onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added' && this.peerConnection) {
+            try {
+              const candData = JSON.parse(change.doc.data().candidate);
+              await this.peerConnection.addIceCandidate(new RTCIceCandidate(candData));
+            } catch (err) {}
+          }
+        });
+      });
+    } catch (e) {
+      console.error('Error al crear sala:', e);
+      this.updateHostStatus('❌ Error al crear la sala: ' + e.message, 'status-error');
+    }
+  }
+
+  async joinOnlineRoom(code) {
+    if (!code) {
+      this.showToast('Por favor, introduce un código de sala');
+      return;
+    }
+    this.cleanupOnlineConnection();
+
+    if (!this.cloudEnabled || !this.firestore) {
+      this.updateJoinStatus('⚠️ Firestore no conectado (revisa firebase-config.js)', 'status-error');
+      return;
+    }
+
+    this.onlineRole = 'guest';
+    this.onlineRoomId = code;
+    this.updateJoinStatus(`⏳ Buscando sala ${code}...`, 'status-waiting');
+
+    try {
+      const roomRef = this.firestore.collection('rooms').doc(code);
+      const snap = await roomRef.get();
+
+      if (!snap.exists) {
+        this.updateJoinStatus(`❌ Sala "${code}" no encontrada`, 'status-error');
+        this.showToast(`La sala ${code} no existe o ha expirado.`);
+        return;
+      }
+
+      const roomData = snap.data();
+      if (roomData.status !== 'waiting_guest') {
+        this.updateJoinStatus(`❌ Sala ${code} ocupada o finalizada`, 'status-error');
+        this.showToast('La sala ya tiene 2 jugadores o se ha cerrado.');
+        return;
+      }
+
+      const rtcConfig = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      };
+
+      this.peerConnection = new RTCPeerConnection(rtcConfig);
+      this.setupPeerConnectionListeners();
+
+      this.peerConnection.ondatachannel = (event) => {
+        this.dataChannel = event.channel;
+        this.setupDataChannel(this.dataChannel);
+      };
+
+      const candidatesCol = roomRef.collection('candidates');
+
+      this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          candidatesCol.add({
+            candidate: JSON.stringify(event.candidate.toJSON()),
+            type: 'guest',
+            timestamp: Date.now()
+          }).catch(() => {});
+        }
+      };
+
+      const offer = JSON.parse(roomData.hostOffer);
+      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+      const answer = await this.peerConnection.createAnswer();
+      await this.peerConnection.setLocalDescription(answer);
+
+      await roomRef.update({
+        guestAnswer: JSON.stringify(answer),
+        status: 'connected'
+      });
+
+      this.updateJoinStatus('🤝 Conectando directamente con el Host...', 'status-waiting');
+
+      this.candidatesUnsubscribe = candidatesCol.where('type', '==', 'host').onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added' && this.peerConnection) {
+            try {
+              const candData = JSON.parse(change.doc.data().candidate);
+              await this.peerConnection.addIceCandidate(new RTCIceCandidate(candData));
+            } catch (err) {}
+          }
+        });
+      });
+    } catch (e) {
+      console.error('Error al unirse a la sala:', e);
+      this.updateJoinStatus('❌ Error al conectar: ' + e.message, 'status-error');
+    }
+  }
+
+  setupPeerConnectionListeners() {
+    if (!this.peerConnection) return;
+
+    this.peerConnection.onconnectionstatechange = () => {
+      const state = this.peerConnection.connectionState;
+      if (state === 'connected') {
+        if (this.onlineRole === 'host') {
+          this.updateHostStatus('🟢 ¡Conexión P2P establecida!', 'status-connected');
+        } else {
+          this.updateJoinStatus('🟢 ¡Conectado al Host!', 'status-connected');
+        }
+      } else if (state === 'disconnected' || state === 'failed') {
+        this.showToast('⚠️ Conexión P2P perdida con el rival.');
+        if (this.isOnline) {
+          this.cleanupOnlineConnection();
+          if (this.gameState === 'playing') {
+            this.showMenu();
+          }
+        }
+      }
+    };
+  }
+
+  setupDataChannel(channel) {
+    if (!channel) return;
+
+    channel.onopen = () => {
+      this.isOnline = true;
+      if (this.onlineLobbyMenu) this.onlineLobbyMenu.classList.add('hidden');
+      if (this.onlineHudBadge) this.onlineHudBadge.classList.remove('hidden');
+
+      this.startOnlinePing();
+      this.showToast(this.onlineRole === 'host' ? '¡Tu rival se ha unido al estanque!' : '¡Conectado al estanque del rival!', 2500);
+
+      // Iniciar la partida
+      this.startOnlineGame();
+    };
+
+    channel.onclose = () => {
+      if (this.isOnline) {
+        this.showToast('🔴 El rival se ha desconectado.');
+        this.cleanupOnlineConnection();
+      }
+    };
+
+    channel.onerror = (e) => {
+      console.warn('Error en DataChannel:', e);
+    };
+
+    channel.onmessage = (event) => {
+      try {
+        const packet = JSON.parse(event.data);
+        this.handleOnlinePacket(packet);
+      } catch (e) {}
+    };
+  }
+
+  sendOnlinePacket(packet) {
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      try {
+        this.dataChannel.send(JSON.stringify(packet));
+      } catch (e) {}
+    }
+  }
+
+  startOnlinePing() {
+    this.stopOnlinePing();
+    this.onlinePingInterval = setInterval(() => {
+      if (this.dataChannel && this.dataChannel.readyState === 'open') {
+        this.onlineLastPingTime = Date.now();
+        this.sendOnlinePacket({ t: 'P', ts: this.onlineLastPingTime });
+      }
+    }, 2000);
+  }
+
+  stopOnlinePing() {
+    if (this.onlinePingInterval) {
+      clearInterval(this.onlinePingInterval);
+      this.onlinePingInterval = null;
+    }
+  }
+
+  handleOnlinePacket(packet) {
+    if (!packet || !packet.t) return;
+
+    // Ping / Pong
+    if (packet.t === 'P') {
+      this.sendOnlinePacket({ t: 'R', ts: packet.ts });
+      return;
+    }
+    if (packet.t === 'R') {
+      const now = Date.now();
+      const ping = Math.max(1, now - (packet.ts || now));
+      this.onlinePing = ping;
+      if (this.onlinePingDisplay) {
+        this.onlinePingDisplay.textContent = `${ping} ms`;
+      }
+      return;
+    }
+
+    // Rematch
+    if (packet.t === 'REMATCH') {
+      this.showToast('¡Revancha aceptada!');
+      this.startGame();
+      return;
+    }
+
+    // Desconexión intencional
+    if (packet.t === 'D') {
+      this.showToast('El rival ha salido de la partida.');
+      this.cleanupOnlineConnection();
+      this.showMenu();
+      return;
+    }
+
+    // Acciones del Invitado recibidas por el Host
+    if (this.onlineRole === 'host') {
+      if (packet.t === 'I') {
+        this.guestInputs = {
+          left: !!packet.left,
+          right: !!packet.right,
+          up: !!packet.up,
+          down: !!packet.down
+        };
+      } else if (packet.t === 'J') {
+        if (this.p2 && this.gameState === 'playing') {
+          this.p2.jump();
+        }
+      } else if (packet.t === 'T') {
+        if (this.p2 && this.gameState === 'playing') {
+          this.p2.shootTongue(null, packet.dir || null);
+        }
+      }
+      return;
+    }
+
+    // Instantáneas de Estado (State) recibidas por el Invitado
+    if (this.onlineRole === 'guest') {
+      if (packet.t === 'S') {
+        this.applyHostSnapshot(packet);
+      }
+    }
+  }
+
+  sendGuestAction(action) {
+    if (this.isOnline && this.onlineRole === 'guest') {
+      this.sendOnlinePacket(action);
+    }
+  }
+
+  applyHostSnapshot(s) {
+    if (!s) return;
+
+    if (typeof s.tRem === 'number') {
+      this.timeRemaining = s.tRem;
+    }
+
+    // Sincronizar P1 (Host)
+    if (this.p1 && s.p1) {
+      if (typeof s.p1.x === 'number') this.p1.x = s.p1.x;
+      if (typeof s.p1.y === 'number') this.p1.y = s.p1.y;
+      if (typeof s.p1.vx === 'number') this.p1.vx = s.p1.vx;
+      if (typeof s.p1.vy === 'number') this.p1.vy = s.p1.vy;
+      if (typeof s.p1.facing === 'number') this.p1.facing = s.p1.facing;
+      if (typeof s.p1.score === 'number') this.p1.score = s.p1.score;
+      if (typeof s.p1.lives === 'number') this.p1.lives = s.p1.lives;
+      if (typeof s.p1.stun === 'number') this.p1.stunTimer = s.p1.stun;
+      if (typeof s.p1.tAct === 'boolean') this.p1.tongue.active = s.p1.tAct;
+      if (typeof s.p1.tLen === 'number') this.p1.tongue.length = s.p1.tLen;
+      if (typeof s.p1.tDirX === 'number') this.p1.tongue.dirX = s.p1.tDirX;
+      if (typeof s.p1.tDirY === 'number') this.p1.tongue.dirY = s.p1.tDirY;
+      if (s.p1.tState) this.p1.tongue.state = s.p1.tState;
+
+      if (s.p1.cBug && !this.p1.tongue.caughtBug) {
+        this.p1.tongue.caughtBug = new Bug(s.p1.cBug.type, this.p1.tongue.tipX, this.p1.tongue.tipY, { width: this.canvas.width, height: this.canvas.height });
+      } else if (!s.p1.cBug) {
+        this.p1.tongue.caughtBug = null;
+      }
+    }
+
+    // Sincronizar P2 (Invitado)
+    if (this.p2 && s.p2) {
+      if (typeof s.p2.x === 'number' && typeof s.p2.y === 'number') {
+        if (Math.hypot(this.p2.x - s.p2.x, this.p2.y - s.p2.y) > 35) {
+          this.p2.x = s.p2.x;
+          this.p2.y = s.p2.y;
+        }
+      }
+      if (typeof s.p2.score === 'number') this.p2.score = s.p2.score;
+      if (typeof s.p2.lives === 'number') this.p2.lives = s.p2.lives;
+      if (typeof s.p2.stun === 'number') this.p2.stunTimer = s.p2.stun;
+      if (typeof s.p2.tAct === 'boolean') this.p2.tongue.active = s.p2.tAct;
+      if (typeof s.p2.tLen === 'number') this.p2.tongue.length = s.p2.tLen;
+      if (typeof s.p2.tDirX === 'number') this.p2.tongue.dirX = s.p2.tDirX;
+      if (typeof s.p2.tDirY === 'number') this.p2.tongue.dirY = s.p2.tDirY;
+      if (s.p2.tState) this.p2.tongue.state = s.p2.tState;
+
+      if (s.p2.cBug && !this.p2.tongue.caughtBug) {
+        this.p2.tongue.caughtBug = new Bug(s.p2.cBug.type, this.p2.tongue.tipX, this.p2.tongue.tipY, { width: this.canvas.width, height: this.canvas.height });
+      } else if (!s.p2.cBug) {
+        this.p2.tongue.caughtBug = null;
+      }
+    }
+
+    // Sincronizar Moscas
+    if (Array.isArray(s.bugs)) {
+      const bounds = { width: this.canvas.width, height: this.canvas.height };
+      const currentBugsMap = new Map();
+      this.bugs.forEach(b => currentBugsMap.set(b.id, b));
+
+      const updatedBugs = [];
+      s.bugs.forEach(sb => {
+        let bug = currentBugsMap.get(sb.id);
+        if (!bug) {
+          bug = new Bug(sb.type, sb.x, sb.y, bounds);
+          bug.id = sb.id;
+        } else {
+          bug.x = sb.x;
+          bug.y = sb.y;
+          bug.alive = sb.alive;
+        }
+        if (bug.alive) {
+          updatedBugs.push(bug);
+        }
+      });
+      this.bugs = updatedBugs;
+    }
+
+    // Fin de partida indicado por Host
+    if (s.winner !== null && s.winner !== undefined && this.gameState === 'playing') {
+      this.endGame(s.winner);
+    }
+  }
+
+  cleanupOnlineConnection() {
+    this.stopOnlinePing();
+    if (this.roomUnsubscribe) {
+      this.roomUnsubscribe();
+      this.roomUnsubscribe = null;
+    }
+    if (this.candidatesUnsubscribe) {
+      this.candidatesUnsubscribe();
+      this.candidatesUnsubscribe = null;
+    }
+    if (this.dataChannel) {
+      try { this.dataChannel.close(); } catch (e) {}
+      this.dataChannel = null;
+    }
+    if (this.peerConnection) {
+      try { this.peerConnection.close(); } catch (e) {}
+      this.peerConnection = null;
+    }
+    this.isOnline = false;
+    this.onlineRole = null;
+    this.onlineRoomId = null;
+    this.lastGuestSentInput = '';
+    this.onlineWinner = null;
+    if (this.onlineHudBadge) this.onlineHudBadge.classList.add('hidden');
+    if (this.hostStatusBadge) this.updateHostStatus('⏳ Esperando a que tu amigo se una...', 'status-waiting');
+    if (this.joinStatusBadge) this.updateJoinStatus('⚪ Introduce el código', 'status-idle');
+  }
+
+  startOnlineGame() {
+    this.opponentMode = 'online2p';
+    this.startGame();
   }
 
   roundRect(ctx, x, y, width, height, radius, fill, stroke) {

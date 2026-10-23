@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crazy Frogs - Banco de Pruebas WebRTC P2P + Firebase</title>
+  <style>
+    :root {
+      --bg: #031510;
+      --card-bg: rgba(6, 44, 34, 0.85);
+      --border: #059669;
+      --accent: #22c55e;
+      --accent-hover: #16a34a;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #ecfdf5;
+      --text-muted: #a7f3d0;
+      --code-bg: #01140e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      background: radial-gradient(circle at top, #064e3b 0%, var(--bg) 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      max-width: 900px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    header {
+      text-align: center;
+      padding: 15px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+    }
+    h1 { font-size: 1.6rem; color: #86efac; margin-bottom: 6px; }
+    p.subtitle { color: var(--text-muted); font-size: 0.95rem; }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+    .badge-offline { background: #374151; color: #9ca3af; }
+    .badge-connecting { background: #854d0e; color: #fde047; }
+    .badge-connected { background: #15803d; color: #bbf7d0; }
+    .badge-failed { background: #991b1b; color: #fca5a5; }
+
+    .grid-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 700px) {
+      .grid-panels { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    h2 { font-size: 1.2rem; color: #6ee7b7; display: flex; align-items: center; gap: 8px; }
+    label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1.1rem;
+      font-family: monospace;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    button {
+      padding: 11px 16px;
+      background: var(--accent);
+      color: #022c22;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: background 0.15s, transform 0.1s;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:active { transform: scale(0.98); }
+    button.btn-danger { background: var(--danger); color: #fff; }
+    button.btn-secondary { background: #065f46; color: #ecfdf5; border: 1px solid var(--border); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .metrics-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+    }
+    .metric-item { display: flex; flex-direction: column; gap: 4px; }
+    .metric-val { font-size: 1.3rem; font-weight: 800; color: #facc15; font-family: monospace; }
+    .metric-lbl { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
+
+    .console-card {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .console-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    #logOutput {
+      height: 220px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.82rem;
+      line-height: 1.4;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .log-info { color: #93c5fd; }
+    .log-success { color: #86efac; }
+    .log-warn { color: #fde047; }
+    .log-error { color: #fca5a5; }
+
+    .analysis-card {
+      background: rgba(3, 30, 23, 0.9);
+      border: 1px solid #047857;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    .analysis-card h3 { color: #facc15; margin-bottom: 8px; font-size: 1rem; }
+    .analysis-card ul { margin-left: 20px; margin-top: 6px; }
+    .analysis-card li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🐸 Crazy Frogs - Banco de Pruebas WebRTC P2P</h1>
+      <p class="subtitle">Prueba aislada de señalización en Firestore, DataChannel y diagnóstico NAT / STUN</p>
+      <div id="connBadge" class="badge badge-offline">Desconectado</div>
+    </header>
+
+    <div class="grid-panels">
+      <!-- Panel Anfitrión (Host) -->
+      <div class="card" id="panelHost">
+        <h2>👑 Crear Sala (Host)</h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted);">
+          Inicia una oferta WebRTC y publica la clave en Firestore para que otro jugador se una.
+        </p>
+        <div>
+          <label>Código de Sala Generado:</label>
+          <input type="text" id="hostRoomCode" readonly placeholder="FROG-XX" />
+        </div>
+        <button id="btnCreateRoom">🚀 1. Crear Sala Privada</button>
+        <button id="btnCloseRoom" class="btn-danger" style="display:none;">❌ Cancelar / Cerrar Sala</button>
+      </div>
+
+      <!-- Panel Invitado (Guest) -->
+      <div class="card" id="panelGuest">
+        <h2>🎮 Unirse a Sala (Invitado)</h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted);">
+          Introduce el código generado por el anfitrión para negociar la conexión directa.
+        </p>
+        <div>
+          <label>Código de Sala:</label>
+          <input type="text" id="guestRoomCode" placeholder="Ej: FROG-99" maxlength="10" />
+        </div>
+        <button id="btnJoinRoom">🤝 2. Unirse y Conectar</button>
+      </div>
+    </div>
+
+    <!-- Barra de Métricas y Diagnóstico en Tiempo Real -->
+    <div class="metrics-bar">
+      <div class="metric-item">
+        <span class="metric-val" id="metricPing">-- ms</span>
+        <span class="metric-lbl">Latencia RTT (Ping)</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-val" id="metricPackets">0</span>
+        <span class="metric-lbl">Paquetes Recibidos</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-val" id="metricNatType">Desconocido</span>
+        <span class="metric-lbl">Tipo de Conexión (ICE)</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-val" id="metricChannelState">Inactivo</span>
+        <span class="metric-lbl">Estado DataChannel</span>
+      </div>
+    </div>
+
+    <!-- Controles de Envío de Prueba -->
+    <div class="card" id="panelTestActions" style="opacity: 0.5; pointer-events: none;">
+      <h2>⚡ Intercambio de Paquetes en Tiempo Real</h2>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button id="btnSendInput" class="btn-secondary">🕹️ Simular Input (Salto)</button>
+        <button id="btnSendState" class="btn-secondary">🌊 Simular Estado del Estanque (Posiciones + Moscas)</button>
+        <button id="btnManualPing" class="btn-secondary">⏱️ Enviar Ping Manual</button>
+        <button id="btnDisconnect" class="btn-danger">🔌 Desconectar</button>
+      </div>
+    </div>
+
+    <!-- Consola de Eventos y Diagnóstico -->
+    <div class="console-card">
+      <div class="console-header">
+        <span>📋 REGISTRO DE EVENTOS WEBRTC & FIRESTORE</span>
+        <button id="btnClearLog" style="padding: 4px 8px; font-size: 0.75rem;" class="btn-secondary">Limpiar</button>
+      </div>
+      <div id="logOutput"></div>
+    </div>
+
+    <!-- Informe Técnico y Preguntas Clave -->
+    <div class="analysis-card">
+      <h3>🔍 Diagnóstico de Redes y Necesidad de Servidor TURN</h3>
+      <p>
+        <strong>¿Cómo funciona esta prueba?</strong> Ambos dispositivos usan servidores STUN públicos de Google (<code>stun:stun.l.google.com:19302</code>). El STUN descubre la dirección IP pública y puerto de cada teléfono.
+      </p>
+      <ul>
+        <li><strong>Redes Wi-Fi Domésticas o Misma Red (NAT Cónico / Host / Srflx)</strong>: La conexión directa P2P tiene éxito en un <strong>80-85%</strong> de los casos con latencias de <strong>15 ms a 35 ms</strong> y <strong>0 €</strong> de coste de transferencia.</li>
+        <li><strong>Redes Móviles (4G / 5G con CGNAT o NAT Simétrico)</strong>: Si ambos jugadores están en datos móviles con operadores restrictivos (ej. Vodafone, Movistar, Orange), los puertos cambian aleatoriamente y STUN no puede emparejarlos directamente. <em>El estado ICE pasará a <code>failed</code></em>.</li>
+        <li><strong>Solución si falla P2P (TURN Relay)</strong>: Se requiere un servidor TURN que actúe de repetidor seguro (ej. Twilio, Metered.ca o servidor <code>coturn</code> propio en un VPS de 3 €/mes). En ese caso, la latencia sube a <strong>45-75 ms</strong> y el coste depende del ancho de banda transmitido (aprox. 0.05-0.10 €/GB, que para Crazy Frogs equivale a más de 50.000 partidas por GB).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (Compat v10) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+    // =========================================================================
+    // BANCO DE PRUEBAS WEBRTC + FIRESTORE
+    // =========================================================================
+    const logBox = document.getElementById('logOutput');
+    const badge = document.getElementById('connBadge');
+    const metricPing = document.getElementById('metricPing');
+    const metricPackets = document.getElementById('metricPackets');
+    const metricNatType = document.getElementById('metricNatType');
+    const metricChannelState = document.getElementById('metricChannelState');
+    const panelTestActions = document.getElementById('panelTestActions');
+
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = `log-${type}`;
+      div.textContent = `[${time}] ${msg}`;
+      logBox.appendChild(div);
+      logBox.scrollTop = logBox.scrollHeight;
+      console.log(`[${type}] ${msg}`);
+    }
+
+    document.getElementById('btnClearLog').addEventListener('click', () => {
+      logBox.innerHTML = '';
+    });
+
+    // 1. Inicializar Firebase
+    let firestore = null;
+    try {
+      if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey && !window.FIREBASE_CONFIG.apiKey.includes('TU_API_KEY')) {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(window.FIREBASE_CONFIG);
+        }
+        firestore = firebase.firestore();
+        log('Firebase Firestore inicializado correctamente con proyecto: ' + window.FIREBASE_CONFIG.projectId, 'success');
+      } else {
+        log('ATENCIÓN: firebase-config.js no contiene credenciales válidas.', 'error');
+      }
+    } catch (e) {
+      log('Error al inicializar Firebase: ' + e.message, 'error');
+    }
+
+    // Configuración STUN estándar de Google
+    const rtcConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    let peerConnection = null;
+    let dataChannel = null;
+    let currentRoomId = null;
+    let isHost = false;
+    let roomUnsubscribe = null;
+    let candidatesUnsubscribe = null;
+    let packetsReceivedCount = 0;
+    let pingInterval = null;
+    let lastPingTimestamp = null;
+    let statsInterval = null;
+
+    function setBadgeState(state, text) {
+      badge.className = `badge badge-${state}`;
+      badge.textContent = text;
+    }
+
+    // =========================================================================
+    // CREAR SALA (HOST)
+    // =========================================================================
+    document.getElementById('btnCreateRoom').addEventListener('click', async () => {
+      if (!firestore) {
+        alert('Firestore no está disponible. Revisa firebase-config.js.');
+        return;
+      }
+
+      document.getElementById('btnCreateRoom').disabled = true;
+      document.getElementById('btnJoinRoom').disabled = true;
+      isHost = true;
+
+      // Generar código de sala de 5 letras (ej: FROG24)
+      currentRoomId = 'FROG' + Math.floor(10 + Math.random() * 90);
+      document.getElementById('hostRoomCode').value = currentRoomId;
+      document.getElementById('btnCloseRoom').style.display = 'inline-block';
+
+      log(`Creando sala privada: ${currentRoomId}...`, 'info');
+      setBadgeState('connecting', 'Creando Sala');
+
+      peerConnection = new RTCPeerConnection(rtcConfig);
+      setupPeerConnectionListeners();
+
+      // El Host crea el DataChannel antes de crear la oferta SDP
+      dataChannel = peerConnection.createDataChannel('crazyFrogsNet', {
+        ordered: false, // Modo no ordenado similar a UDP (óptimo para juegos de acción)
+        maxRetransmits: 0
+      });
+      setupDataChannelListeners();
+
+      // Colección de candidatos ICE del Host en Firestore
+      const roomRef = firestore.collection('rooms').doc(currentRoomId);
+      const candidatesCol = roomRef.collection('candidates');
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          log(`Candidato ICE local (Host) generado: [${event.candidate.type}]`, 'info');
+          candidatesCol.add({
+            candidate: JSON.stringify(event.candidate.toJSON()),
+            type: 'host',
+            timestamp: Date.now()
+          });
+        }
+      };
+
+      // Crear oferta SDP
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      const roomData = {
+        roomId: currentRoomId,
+        status: 'waiting_guest',
+        hostOffer: JSON.stringify(offer),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      await roomRef.set(roomData);
+      log(`Sala ${currentRoomId} creada en Firestore. Esperando al Invitado...`, 'success');
+      setBadgeState('connecting', 'Esperando Rival');
+
+      // Escuchar cuando el invitado responde con su Answer
+      roomUnsubscribe = roomRef.onSnapshot(async (snapshot) => {
+        const data = snapshot.data();
+        if (!data) return;
+
+        if (!peerConnection.currentRemoteDescription && data.guestAnswer) {
+          log('Respuesta SDP del Invitado recibida. Estableciendo RemoteDescription...', 'info');
+          const answer = new RTCSessionDescription(JSON.parse(data.guestAnswer));
+          await peerConnection.setRemoteDescription(answer);
+          log('RemoteDescription fijado con éxito.', 'success');
+        }
+
+        if (data.status === 'closed') {
+          log('La sala fue cerrada.', 'warn');
+          cleanup();
+        }
+      });
+
+      // Escuchar candidatos ICE del Invitado
+      candidatesUnsubscribe = candidatesCol.where('type', '==', 'guest').onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+            const candData = JSON.parse(change.doc.data().candidate);
+            try {
+              await peerConnection.addIceCandidate(new RTCIceCandidate(candData));
+              log(`Candidato ICE del Invitado aplicado: [${candData.type || 'srflx/host'}]`, 'info');
+            } catch (err) {
+              log('Error al aplicar candidato ICE: ' + err.message, 'error');
+            }
+          }
+        });
+      });
+    });
+
+    // =========================================================================
+    // UNIRSE A SALA (GUEST / INVITADO)
+    // =========================================================================
+    document.getElementById('btnJoinRoom').addEventListener('click', async () => {
+      const code = document.getElementById('guestRoomCode').value.trim().toUpperCase();
+      if (!code) {
+        alert('Por favor, escribe el código de la sala.');
+        return;
+      }
+      if (!firestore) {
+        alert('Firestore no está disponible.');
+        return;
+      }
+
+      document.getElementById('btnJoinRoom').disabled = true;
+      document.getElementById('btnCreateRoom').disabled = true;
+      isHost = false;
+      currentRoomId = code;
+
+      log(`Buscando sala ${currentRoomId} en Firestore...`, 'info');
+      setBadgeState('connecting', 'Buscando Sala');
+
+      const roomRef = firestore.collection('rooms').doc(currentRoomId);
+      const roomSnap = await roomRef.get();
+
+      if (!roomSnap.exists) {
+        log(`La sala ${currentRoomId} no existe o ha expirado.`, 'error');
+        alert('La sala no existe o ha expirado.');
+        document.getElementById('btnJoinRoom').disabled = false;
+        document.getElementById('btnCreateRoom').disabled = false;
+        setBadgeState('failed', 'Sala No Encontrada');
+        return;
+      }
+
+      const roomData = roomSnap.data();
+      if (roomData.status !== 'waiting_guest') {
+        log(`La sala ${currentRoomId} ya no está disponible (Estado: ${roomData.status}).`, 'warn');
+        alert('La sala ya está ocupada o cerrada.');
+        document.getElementById('btnJoinRoom').disabled = false;
+        document.getElementById('btnCreateRoom').disabled = false;
+        setBadgeState('failed', 'Sala Ocupada');
+        return;
+      }
+
+      peerConnection = new RTCPeerConnection(rtcConfig);
+      setupPeerConnectionListeners();
+
+      // El Invitado recibe el DataChannel creado por el Host
+      peerConnection.ondatachannel = (event) => {
+        log('DataChannel recibido del Host: ' + event.channel.label, 'success');
+        dataChannel = event.channel;
+        setupDataChannelListeners();
+      };
+
+      const candidatesCol = roomRef.collection('candidates');
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          log(`Candidato ICE local (Invitado) generado: [${event.candidate.type}]`, 'info');
+          candidatesCol.add({
+            candidate: JSON.stringify(event.candidate.toJSON()),
+            type: 'guest',
+            timestamp: Date.now()
+          });
+        }
+      };
+
+      // Establecer la oferta del Host
+      const offer = JSON.parse(roomData.hostOffer);
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // Crear y enviar Answer
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      await roomRef.update({
+        guestAnswer: JSON.stringify(answer),
+        status: 'connected'
+      });
+      log('Respuesta SDP enviada a Firestore. Negociando conexión WebRTC...', 'info');
+
+      // Escuchar candidatos ICE del Host
+      candidatesUnsubscribe = candidatesCol.where('type', '==', 'host').onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+            const candData = JSON.parse(change.doc.data().candidate);
+            try {
+              await peerConnection.addIceCandidate(new RTCIceCandidate(candData));
+              log(`Candidato ICE del Host aplicado: [${candData.type || 'srflx/host'}]`, 'info');
+            } catch (err) {
+              log('Error al aplicar candidato ICE: ' + err.message, 'error');
+            }
+          }
+        });
+      });
+    });
+
+    // =========================================================================
+    // LISTENERS DEL PEER CONNECTION
+    // =========================================================================
+    function setupPeerConnectionListeners() {
+      peerConnection.onconnectionstatechange = () => {
+        const state = peerConnection.connectionState;
+        log(`Estado de Conexión Peer: [${state.toUpperCase()}]`, state === 'connected' ? 'success' : 'info');
+
+        if (state === 'connected') {
+          setBadgeState('connected', 'Conectado P2P');
+          panelTestActions.style.opacity = '1';
+          panelTestActions.style.pointerEvents = 'auto';
+          startPingMonitor();
+          startStatsMonitor();
+        } else if (state === 'disconnected' || state === 'failed') {
+          setBadgeState('failed', 'Desconectado / Fallo ICE');
+          log('La conexión P2P se ha perdido o no ha podido sortear el NAT.', 'error');
+          stopMonitors();
+        } else if (state === 'closed') {
+          setBadgeState('offline', 'Cerrada');
+          stopMonitors();
+        }
+      };
+
+      peerConnection.oniceconnectionstatechange = () => {
+        log(`Estado ICE: [${peerConnection.iceConnectionState}]`, 'info');
+      };
+    }
+
+    // =========================================================================
+    // LISTENERS DEL DATA CHANNEL
+    // =========================================================================
+    function setupDataChannelListeners() {
+      if (!dataChannel) return;
+
+      dataChannel.onopen = () => {
+        log('🟢 DataChannel abierto y listo para transmitir paquetes a 60 FPS.', 'success');
+        metricChannelState.textContent = 'Abierto (P2P)';
+        metricChannelState.style.color = '#86efac';
+      };
+
+      dataChannel.onclose = () => {
+        log('🔴 DataChannel cerrado.', 'warn');
+        metricChannelState.textContent = 'Cerrado';
+        metricChannelState.style.color = '#fca5a5';
+      };
+
+      dataChannel.onerror = (e) => {
+        log('Error en DataChannel: ' + (e.message || 'error desconocido'), 'error');
+      };
+
+      dataChannel.onmessage = (event) => {
+        packetsReceivedCount++;
+        metricPackets.textContent = packetsReceivedCount;
+
+        try {
+          const packet = JSON.parse(event.data);
+          handleIncomingPacket(packet);
+        } catch (e) {
+          log(`Mensaje binario / texto recibido (${event.data.length} bytes)`, 'info');
+        }
+      };
+    }
+
+    function handleIncomingPacket(packet) {
+      if (packet.type === 'PING') {
+        // Responder inmediatamente con PONG
+        if (dataChannel && dataChannel.readyState === 'open') {
+          dataChannel.send(JSON.stringify({ type: 'PONG', timestamp: packet.timestamp }));
+        }
+      } else if (packet.type === 'PONG') {
+        const rtt = Math.round(performance.now() - packet.timestamp);
+        metricPing.textContent = `${rtt} ms`;
+        if (rtt < 40) metricPing.style.color = '#86efac';
+        else if (rtt < 90) metricPing.style.color = '#fde047';
+        else metricPing.style.color = '#fca5a5';
+      } else if (packet.type === 'INPUT') {
+        log(`🕹️ Input rival recibido: [${packet.action}] (T: ${packet.timestamp})`, 'info');
+      } else if (packet.type === 'STATE_SYNC') {
+        log(`🌊 Sincronización de Estanque recibida: ${packet.bugsCount} moscas, Ranita P1: (${packet.p1.x}, ${packet.p1.y})`, 'info');
+      }
+    }
+
+    // =========================================================================
+    // MONITOR DE PING Y ESTADÍSTICAS NAT
+    // =========================================================================
+    function startPingMonitor() {
+      if (pingInterval) clearInterval(pingInterval);
+      pingInterval = setInterval(() => {
+        if (dataChannel && dataChannel.readyState === 'open') {
+          dataChannel.send(JSON.stringify({ type: 'PING', timestamp: performance.now() }));
+        }
+      }, 1000);
+    }
+
+    function startStatsMonitor() {
+      if (statsInterval) clearInterval(statsInterval);
+      statsInterval = setInterval(async () => {
+        if (!peerConnection) return;
+        try {
+          const stats = await peerConnection.getStats();
+          stats.forEach(report => {
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              const localCand = stats.get(report.localCandidateId);
+              const remoteCand = stats.get(report.remoteCandidateId);
+              if (localCand && remoteCand) {
+                const natType = `${localCand.candidateType.toUpperCase()} ⇄ ${remoteCand.candidateType.toUpperCase()}`;
+                metricNatType.textContent = natType;
+                if (localCand.candidateType === 'relay' || remoteCand.candidateType === 'relay') {
+                  metricNatType.style.color = '#f59e0b';
+                } else {
+                  metricNatType.style.color = '#86efac';
+                }
+              }
+            }
+          });
+        } catch (e) {}
+      }, 2000);
+    }
+
+    function stopMonitors() {
+      if (pingInterval) clearInterval(pingInterval);
+      if (statsInterval) clearInterval(statsInterval);
+      pingInterval = null;
+      statsInterval = null;
+    }
+
+    // =========================================================================
+    // BOTONES DE ACCIÓN DE PRUEBA
+    // =========================================================================
+    document.getElementById('btnSendInput').addEventListener('click', () => {
+      if (!dataChannel || dataChannel.readyState !== 'open') return;
+      const pkt = { type: 'INPUT', action: 'JUMP', timestamp: Date.now() };
+      dataChannel.send(JSON.stringify(pkt));
+      log('📤 Paquete INPUT (Salto) enviado al rival', 'info');
+    });
+
+    document.getElementById('btnSendState').addEventListener('click', () => {
+      if (!dataChannel || dataChannel.readyState !== 'open') return;
+      const pkt = {
+        type: 'STATE_SYNC',
+        bugsCount: 6,
+        p1: { x: 160, y: 380, score: 8 },
+        p2: { x: 800, y: 380, score: 5 },
+        timestamp: Date.now()
+      };
+      dataChannel.send(JSON.stringify(pkt));
+      log(`📤 Paquete STATE_SYNC enviado (Tamaño: ${JSON.stringify(pkt).length} bytes)`, 'info');
+    });
+
+    document.getElementById('btnManualPing').addEventListener('click', () => {
+      if (!dataChannel || dataChannel.readyState !== 'open') return;
+      dataChannel.send(JSON.stringify({ type: 'PING', timestamp: performance.now() }));
+      log('⏱️ Ping manual enviado', 'info');
+    });
+
+    // =========================================================================
+    // LIMPIEZA Y CIERRE DE SALA
+    // =========================================================================
+    async function cleanup() {
+      stopMonitors();
+      if (roomUnsubscribe) roomUnsubscribe();
+      if (candidatesUnsubscribe) candidatesUnsubscribe();
+
+      if (dataChannel) {
+        try { dataChannel.close(); } catch (e) {}
+        dataChannel = null;
+      }
+      if (peerConnection) {
+        try { peerConnection.close(); } catch (e) {}
+        peerConnection = null;
+      }
+
+      if (isHost && currentRoomId && firestore) {
+        try {
+          log(`Borrando documento de sala ${currentRoomId} de Firestore...`, 'info');
+          await firestore.collection('rooms').doc(currentRoomId).delete();
+          log('Documento de sala borrado correctamente.', 'success');
+        } catch (e) {
+          log('Aviso al borrar sala: ' + e.message, 'warn');
+        }
+      }
+
+      setBadgeState('offline', 'Desconectado');
+      document.getElementById('btnCreateRoom').disabled = false;
+      document.getElementById('btnJoinRoom').disabled = false;
+      document.getElementById('btnCloseRoom').style.display = 'none';
+      document.getElementById('hostRoomCode').value = '';
+      panelTestActions.style.opacity = '0.5';
+      panelTestActions.style.pointerEvents = 'none';
+      metricChannelState.textContent = 'Inactivo';
+      metricPing.textContent = '-- ms';
+      metricNatType.textContent = 'Desconocido';
+    }
+
+    document.getElementById('btnCloseRoom').addEventListener('click', cleanup);
+    document.getElementById('btnDisconnect').addEventListener('click', cleanup);
+    window.addEventListener('beforeunload', cleanup);
+  </script>
+</body>
+</html>

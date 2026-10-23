@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Función auxiliar para validar entradas del ranking
+    function isValidLeaderboard(data) {
+      return data.name is string
+             && data.name.size() > 0
+             && data.name.size() <= 20
+             && data.score is number
+             && data.score >= 0
+             && data.score <= 300
+             && data.diff in ['easy', 'normal', 'hard']
+             && data.createdAt == request.time;
+    }
+
+    // =========================================================================
+    // 1. SALÓN DE LA FAMA (RANKINGS GLOBALES)
+    // =========================================================================
+    match /leaderboard_time/{entry} {
+      allow read: if true;
+      allow create: if isValidLeaderboard(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /leaderboard_lives/{entry} {
+      allow read: if true;
+      allow create: if isValidLeaderboard(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /leaderboard_race/{entry} {
+      allow read: if true;
+      allow create: if isValidLeaderboard(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // 2. SALAS MULTIJUGADOR (SEÑALIZACIÓN WEBRTC)
+    // =========================================================================
+    match /rooms/{roomId} {
+      // Lectura permitida si la sala no ha caducado (máximo 15 minutos de antigüedad)
+      allow read: if resource == null || (request.time < resource.data.createdAt + duration.value(15, 'm'));
+
+      // Creación de sala: solo en estado 'waiting_guest' con oferta válida
+      allow create: if request.resource.data.status == 'waiting_guest'
+                    && request.resource.data.roomId == roomId
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.hostOffer is string
+                    && request.resource.data.hostOffer.size() < 15000;
+
+      // Unión a la sala (Invitado) o cierre por parte de los jugadores
+      allow update: if (
+        // Caso A: El invitado escribe su guestAnswer
+        (resource.data.status == 'waiting_guest'
+         && request.resource.data.status == 'connected'
+         && request.resource.data.guestAnswer is string
+         && request.resource.data.guestAnswer.size() < 15000)
+        ||
+        // Caso B: Cierre de sala por cualquiera de los participantes
+        (request.resource.data.status == 'closed')
+      );
+
+      // Borrado de sala: permitido para limpieza al terminar la partida
+      allow delete: if true;
+
+      // Subcolección de candidatos ICE para la negociación de red
+      match /candidates/{candidateId} {
+        allow read: if true;
+        allow create: if request.resource.data.candidate is string
+                      && request.resource.data.type in ['host', 'guest']
+                      && request.time < get(/databases/$(database)/documents/rooms/$(roomId)).data.createdAt + duration.value(15, 'm');
+        allow update, delete: if true;
+      }
+    }
+  }
+}
