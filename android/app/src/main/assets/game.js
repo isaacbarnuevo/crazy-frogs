@@ -181,6 +181,57 @@ class SoundSystem {
     });
   }
 
+  playRoundStart() {
+    if (this.muted || !this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+      osc.frequency.setValueAtTime(880, this.ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.45);
+    } catch (e) {}
+  }
+
+  playKo() {
+    if (this.muted || !this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(55, this.ctx.currentTime + 0.55);
+      gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.55);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.55);
+    } catch (e) {}
+  }
+
+  playUltraReady() {
+    if (this.muted || !this.ctx) return;
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+      setTimeout(() => {
+        this.playTone(freq, 'sine', 0.25, 0.18);
+      }, idx * 70);
+    });
+  }
+
+  playUltraHit() {
+    if (this.muted || !this.ctx) return;
+    try {
+      this.playBonk();
+      this.playSplash();
+    } catch (e) {}
+  }
+
   startBgm() {
     if (this.muted || this.bgmPlaying || !this.ctx) return;
     this.bgmPlaying = true;
@@ -480,6 +531,12 @@ class Frog {
     this.facing = playerNum === 1 ? 1 : -1; // 1: derecha, -1: izquierda
     this.isCrouching = false;
     this.isLookingUp = false;
+    this.hp = 100;
+    this.maxHp = 100;
+    this.energy = 0;
+    this.maxEnergy = 100;
+    this.isUltraReady = false;
+    this.gameMode = 'time';
 
     // Aspecto / Colores
     if (playerNum === 1) {
@@ -559,6 +616,14 @@ class Frog {
     this.tongue.length = 0;
     this.tongue.caughtBug = null;
     this.mouthOpen = 1;
+
+    if (this.isUltraReady) {
+      this.tongue.maxLength = 360;
+      this.tongue.speed = 1450;
+    } else {
+      this.tongue.maxLength = 280;
+      this.tongue.speed = 1200;
+    }
 
     // Determinar dirección del tiro
     let dx = this.facing;
@@ -641,9 +706,20 @@ class Frog {
       }
 
       // Evaluar atacar al rival con "¡BONK!" si está cerca y a tiro
-      if (otherFrog && Math.hypot(otherFrog.x - this.x, otherFrog.y - this.y) < 170) {
-        const bonkInterest = difficulty === 'hard' ? 65 : (difficulty === 'normal' ? 25 : 10);
+      if (otherFrog) {
+        let bonkInterest = 0;
+        const dOther = Math.hypot(otherFrog.x - this.x, otherFrog.y - this.y);
+        if (this.gameMode === 'kombat') {
+          if (this.isUltraReady) {
+            bonkInterest = 260; // ¡Con Ultra cargado, golpear a la otra rana es prioridad absoluta!
+          } else if (dOther < 190) {
+            bonkInterest = difficulty === 'hard' ? 95 : (difficulty === 'normal' ? 55 : 25);
+          }
+        } else if (dOther < 170) {
+          bonkInterest = difficulty === 'hard' ? 65 : (difficulty === 'normal' ? 25 : 10);
+        }
         if (bonkInterest > bestScore) {
+          bestScore = bonkInterest;
           bestTarget = otherFrog;
         }
       }
@@ -891,7 +967,12 @@ class Frog {
       particles.push(new WaterSplashParticle(this.x, this.y + 10));
     }
 
-    floatingTexts.push(new FloatingText(this.x, this.y - 20, '¡CHOF!', '#38bdf8'));
+    if (this.gameMode === 'kombat') {
+      this.hp = Math.max(0, this.hp - 20);
+      floatingTexts.push(new FloatingText(this.x, this.y - 20, '🌊 -20 HP (¡CHOF!)', '#38bdf8'));
+    } else {
+      floatingTexts.push(new FloatingText(this.x, this.y - 20, '¡CHOF!', '#38bdf8'));
+    }
 
     // Reubicar en el nenúfar más cercano
     let nearestPad = lilyPads[0];
@@ -944,16 +1025,44 @@ class Frog {
         }
       }
 
-      // Colisión de lengua contra la otra rana (¡BONK divertido!)
+      // Colisión de lengua contra la otra rana (¡Combate y Empujones!)
       if (otherFrog && this.tongue.state === 'extending' && !this.tongue.caughtBug) {
         const frogDist = Math.hypot(this.tongue.tipX - otherFrog.x, this.tongue.tipY - otherFrog.y);
-        if (frogDist < 26) {
-          audio.playBonk();
-          otherFrog.vx = this.facing * 240;
-          otherFrog.stunTimer = 0.45;
-          floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 35, '¡BONK!', '#f87171'));
-          for (let i = 0; i < 8; i++) {
-            particles.push(new SparkleParticle(otherFrog.x, otherFrog.y, '#facc15'));
+        if (frogDist < 28) {
+          if (this.gameMode === 'kombat') {
+            if (this.isUltraReady) {
+              // Golpe Ultra Demoledor!
+              audio.playUltraHit();
+              otherFrog.hp = Math.max(0, otherFrog.hp - 35);
+              otherFrog.vx = this.facing * 680;
+              otherFrog.vy = -340;
+              otherFrog.stunTimer = 0.6;
+              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 45, '💥 ¡ULTRA CRÍTICO! -35 HP', '#f59e0b'));
+              for (let i = 0; i < 22; i++) {
+                particles.push(new SparkleParticle(otherFrog.x, otherFrog.y, '#f59e0b'));
+              }
+              this.isUltraReady = false;
+              this.energy = 0;
+            } else {
+              // Golpe Normal
+              audio.playBonk();
+              otherFrog.hp = Math.max(0, otherFrog.hp - 10);
+              otherFrog.vx = this.facing * 360;
+              otherFrog.vy = -180;
+              otherFrog.stunTimer = 0.35;
+              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 35, '🥊 -10 HP', '#ef4444'));
+              for (let i = 0; i < 8; i++) {
+                particles.push(new SparkleParticle(otherFrog.x, otherFrog.y, '#f87171'));
+              }
+            }
+          } else {
+            audio.playBonk();
+            otherFrog.vx = this.facing * 240;
+            otherFrog.stunTimer = 0.45;
+            floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 35, '¡BONK!', '#f87171'));
+            for (let i = 0; i < 8; i++) {
+              particles.push(new SparkleParticle(otherFrog.x, otherFrog.y, '#facc15'));
+            }
           }
           this.tongue.state = 'retracting';
         }
@@ -990,7 +1099,16 @@ class Frog {
             this.lives = Math.max(0, this.lives - 1);
             this.stunTimer = 0.8;
             this.invulnerableTimer = 1.2;
-            floatingTexts.push(new FloatingText(this.x, this.y - 35, '¡PICADURA! -1 ❤️', '#ef4444'));
+
+            if (this.gameMode === 'kombat') {
+              this.hp = Math.max(0, this.hp - 15);
+              this.energy = Math.max(0, this.energy - 25);
+              this.isUltraReady = false;
+              floatingTexts.push(new FloatingText(this.x, this.y - 35, '⚠️ ¡PICADURA! -15 HP', '#ef4444'));
+            } else {
+              floatingTexts.push(new FloatingText(this.x, this.y - 35, '¡PICADURA! -1 ❤️', '#ef4444'));
+            }
+
             for (let i = 0; i < 12; i++) {
               particles.push(new SparkleParticle(this.x, this.y, '#ef4444'));
             }
@@ -999,7 +1117,26 @@ class Frog {
             audio.playCatch(bug.points);
             this.score += bug.points;
             this.fliesEaten++;
-            floatingTexts.push(new FloatingText(this.x, this.y - 35, `+${bug.points}`, bug.color));
+
+            if (this.gameMode === 'kombat') {
+              let energyGain = 15;
+              if (bug.type === 'dragonfly') energyGain = 25;
+              else if (bug.type === 'golden') energyGain = 40;
+              this.energy = Math.min(100, this.energy + energyGain);
+
+              if (this.energy >= 100) {
+                this.energy = 100;
+                if (!this.isUltraReady) {
+                  this.isUltraReady = true;
+                  audio.playUltraReady();
+                  floatingTexts.push(new FloatingText(this.x, this.y - 45, '🔥 ¡ULTRA LISTO! 🔥', '#f59e0b'));
+                }
+              }
+              floatingTexts.push(new FloatingText(this.x, this.y - 35, `+${bug.points} (+⚡${energyGain}%)`, bug.color));
+            } else {
+              floatingTexts.push(new FloatingText(this.x, this.y - 35, `+${bug.points}`, bug.color));
+            }
+
             for (let i = 0; i < 14; i++) {
               particles.push(new SparkleParticle(this.x, this.y, bug.color));
             }
@@ -1013,6 +1150,20 @@ class Frog {
   draw(ctx, nearestBug) {
     ctx.save();
     ctx.translate(this.x, this.y);
+
+    // Aura ardiente cuando el Ultra está listo (Modo Kombat)
+    if (this.isUltraReady) {
+      ctx.save();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 14;
+      const auraPulse = Math.sin(Date.now() * 0.012) * 3;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, this.width * 0.65 + auraPulse, this.height * 0.65 + auraPulse, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Efecto de parpadeo si está invulnerable
     if (this.invulnerableTimer > 0 && Math.floor(this.invulnerableTimer * 15) % 2 === 0) {
@@ -1136,33 +1287,52 @@ class Frog {
 
   drawTongue(ctx) {
     ctx.save();
-    // Línea de lengua elástica rosada
     ctx.beginPath();
     ctx.moveTo(this.tongue.startX, this.tongue.startY);
 
-    // Curva sutil hacia la punta
     const midX = (this.tongue.startX + this.tongue.tipX) / 2;
     const midY = (this.tongue.startY + this.tongue.tipY) / 2 + 6;
     ctx.quadraticCurveTo(midX, midY, this.tongue.tipX, this.tongue.tipY);
 
-    ctx.lineWidth = 7;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#f43f5e'; // Rosa brillante
-    ctx.stroke();
+    if (this.isUltraReady) {
+      // Lengua Ultra Titánica en llamas doradas
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.stroke();
 
-    // Reflejo central fino en la lengua
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#fbcfe8';
-    ctx.stroke();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#fef08a';
+      ctx.stroke();
 
-    // Punta adhesiva de la lengua
-    ctx.beginPath();
-    ctx.arc(this.tongue.tipX, this.tongue.tipY, 7.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#e11d48';
-    ctx.fill();
-    ctx.strokeStyle = '#ffe4e6';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+      // Punta adhesiva ardiente
+      ctx.beginPath();
+      ctx.arc(this.tongue.tipX, this.tongue.tipY, 13, 0, Math.PI * 2);
+      ctx.fillStyle = '#dc2626';
+      ctx.fill();
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    } else {
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#f43f5e';
+      ctx.stroke();
+
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#fbcfe8';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(this.tongue.tipX, this.tongue.tipY, 7.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#e11d48';
+      ctx.fill();
+      ctx.strokeStyle = '#ffe4e6';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
     // Si lleva una mosca atrapada, dibujarla en la punta
     if (this.tongue.caughtBug) {
@@ -2191,10 +2361,26 @@ class CrazyFrogsGame {
     this.p1 = new Frog(1, p1Pad.x, p1Pad.y - 30, p1Name);
     this.p2 = new Frog(2, p2Pad.x, p2Pad.y - 30, p2Name);
     this.p2.isCPU = isCPU && !isOnline;
+    this.p1.gameMode = this.gameMode;
+    this.p2.gameMode = this.gameMode;
 
     if (this.gameMode === 'lives') {
       this.p1.lives = 3;
       this.p2.lives = 3;
+    } else if (this.gameMode === 'kombat') {
+      this.kombatRound = 1;
+      this.kombatP1Wins = 0;
+      this.kombatP2Wins = 0;
+      this.isRoundOver = false;
+      this.roundTransitionTimer = 0;
+      this.p1.hp = 100;
+      this.p2.hp = 100;
+      this.p1.energy = 0;
+      this.p2.energy = 0;
+      this.p1.isUltraReady = false;
+      this.p2.isUltraReady = false;
+      this.triggerRoundBanner('¡RONDA 1!', '¡A LUCHAR!');
+      audio.playRoundStart();
     }
 
     this.timeRemaining = 60;
@@ -2365,6 +2551,27 @@ class CrazyFrogsGame {
       data.race = data.race.slice(0, 10);
 
       this.saveCloudRecord('race', entry);
+    } else if (this.gameMode === 'kombat') {
+      const winFrog = winner === 1 ? this.p1 : this.p2;
+      const winAcc = winner === 1 ? p1Acc : p2Acc;
+      const p1W = this.kombatP1Wins || 0;
+      const p2W = this.kombatP2Wins || 0;
+      const resultStr = winner === 1 ? `${p1W} - ${p2W}` : `${p2W} - ${p1W}`;
+      const entry = {
+        name: winFrog.name,
+        result: resultStr,
+        rounds: this.kombatRound || 1,
+        score: winFrog.score,
+        flies: winFrog.fliesEaten,
+        diff: this.difficulty,
+        date: dateStr
+      };
+      if (!data.kombat) data.kombat = [];
+      data.kombat.push(entry);
+      data.kombat.sort((a, b) => b.score - a.score);
+      if (data.kombat.slice(0, 3).includes(entry)) isNewRecord = true;
+      data.kombat = data.kombat.slice(0, 10);
+      this.saveCloudRecord('kombat', entry);
     }
 
     this.saveLeaderboardData(data);
@@ -2491,6 +2698,9 @@ class CrazyFrogsGame {
         let hearts = '';
         for (let h = 0; h < (item.livesLeft || 1); h++) hearts += '❤️';
         detailCol = `${hearts} (${item.timeSurvived || 0}s)`;
+      } else if (this.lbSelectedMode === 'kombat') {
+        valCol = `<strong style="color:#f59e0b;">🥊 ${item.result || '2 - 0'}</strong>`;
+        detailCol = `${item.rounds || 2} rondas (${item.score || 0} pts)`;
       } else {
         valCol = `<strong style="color:#facc15;">⏱️ ${item.timeSeconds}s</strong>`;
         detailCol = `${item.flies || 0} moscas (${item.score || 0} pts)`;
@@ -2564,7 +2774,21 @@ class CrazyFrogsGame {
     let winnerText = '';
     let winnerBg = '';
 
-    if (winner === 'draw') {
+    if (this.gameMode === 'kombat') {
+      if (winner === 'draw') {
+        this.winnerTitle.textContent = '🤝 ¡EMPATE EN EL KOMBAT!';
+        winnerText = `¡Doble K.O.! Ambas ranas lucharon con todo (${this.kombatP1Wins} - ${this.kombatP2Wins})`;
+        winnerBg = '#10b981';
+      } else if (winner === 1) {
+        this.winnerTitle.textContent = `👑 ¡${this.p1.name.toUpperCase()} CAMPEÓN!`;
+        winnerText = `¡Victoria definitiva en ${this.kombatRound} rondas! (${this.kombatP1Wins} - ${this.kombatP2Wins})`;
+        winnerBg = '#22c55e';
+      } else {
+        this.winnerTitle.textContent = `👑 ¡${this.p2.name.toUpperCase()} CAMPEÓN!`;
+        winnerText = `¡Victoria definitiva en ${this.kombatRound} rondas! (${this.kombatP2Wins} - ${this.kombatP1Wins})`;
+        winnerBg = '#f97316';
+      }
+    } else if (winner === 'draw') {
       this.winnerTitle.textContent = '🤝 ¡EMPATE EN EL ESTANQUE!';
       winnerText = `¡${this.p1.name} y ${this.p2.name} son igual de voraces! (${this.p1.score} pts)`;
       winnerBg = '#10b981';
@@ -2625,6 +2849,15 @@ class CrazyFrogsGame {
 
     this.waterTime += dt;
     this.gameElapsedTime += dt;
+    if (this.roundBannerTimer > 0) {
+      this.roundBannerTimer -= dt;
+      if (this.roundBannerTimer <= 0) {
+        this.roundBannerText = '';
+        this.roundBannerSubtext = '';
+      }
+    }
+    if (this.p1) this.p1.gameMode = this.gameMode;
+    if (this.p2) this.p2.gameMode = this.gameMode;
 
     // Actualizar nenúfares
     this.lilyPads.forEach(pad => pad.update(dt));
@@ -2679,6 +2912,43 @@ class CrazyFrogsGame {
         if (this.p2.score >= this.maxScoreTarget) {
           this.endGame(2);
           return;
+        }
+      }
+
+      // Comprobar condiciones de combate y rondas para Modo Kombat (Street Frog al mejor de 3)
+      if (this.gameMode === 'kombat') {
+        if (!this.isRoundOver) {
+          if (this.p1.hp <= 0 || this.p2.hp <= 0) {
+            this.isRoundOver = true;
+            this.roundTransitionTimer = 2.4;
+            audio.playKo();
+
+            if (this.p1.hp <= 0 && this.p2.hp <= 0) {
+              this.triggerRoundBanner('¡DOBLE K.O.!', 'EMPATE EN LA RONDA');
+            } else if (this.p1.hp <= 0) {
+              this.kombatP2Wins++;
+              this.triggerRoundBanner('¡K.O.!', `¡RONDA PARA ${this.p2.name.toUpperCase()}!`);
+            } else {
+              this.kombatP1Wins++;
+              this.triggerRoundBanner('¡K.O.!', `¡RONDA PARA ${this.p1.name.toUpperCase()}!`);
+            }
+          }
+        } else {
+          this.roundTransitionTimer -= dt;
+          if (this.roundTransitionTimer <= 0) {
+            if (this.kombatP1Wins >= 2) {
+              this.endGame(1);
+              return;
+            } else if (this.kombatP2Wins >= 2) {
+              this.endGame(2);
+              return;
+            } else if (this.kombatRound >= 3 && this.kombatP1Wins === this.kombatP2Wins) {
+              this.endGame('draw');
+              return;
+            } else {
+              this.nextKombatRound();
+            }
+          }
         }
       }
 
@@ -2781,7 +3051,20 @@ class CrazyFrogsGame {
             vy: Math.round((b.vy || 0) * 10) / 10,
             alive: b.alive
           })),
-          winner: this.onlineWinner !== undefined ? this.onlineWinner : null
+          winner: this.onlineWinner !== undefined ? this.onlineWinner : null,
+          kombat: this.gameMode === 'kombat' ? {
+            r: this.kombatRound,
+            p1W: this.kombatP1Wins,
+            p2W: this.kombatP2Wins,
+            p1Hp: this.p1.hp,
+            p2Hp: this.p2.hp,
+            p1En: this.p1.energy,
+            p2En: this.p2.energy,
+            p1U: this.p1.isUltraReady,
+            p2U: this.p2.isUltraReady,
+            bTxt: this.roundBannerText,
+            bSub: this.roundBannerSubtext
+          } : null
         };
         this.sendOnlinePacket(snapshot);
       }
@@ -2876,10 +3159,94 @@ class CrazyFrogsGame {
     // Dibujar Textos Flotantes
     this.floatingTexts.forEach(t => t.draw(ctx));
 
+    // Banner de Ronda y K.O. en el centro de la pantalla
+    if (this.roundBannerText) {
+      this.drawRoundBanner(ctx, w, h);
+    }
+
     // Dibujar HUD superior durante el juego
     if (this.gameState === 'playing' || this.gameState === 'paused') {
       this.drawHUD(ctx, w, h);
     }
+  }
+
+
+  triggerRoundBanner(text, subtext = '', duration = 2.2) {
+    this.roundBannerText = text;
+    this.roundBannerSubtext = subtext;
+    this.roundBannerTimer = duration;
+  }
+
+  nextKombatRound() {
+    this.kombatRound++;
+    this.isRoundOver = false;
+    this.roundTransitionTimer = 0;
+
+    const p1Pad = this.lilyPads[0];
+    const p2Pad = this.lilyPads[1];
+
+    this.p1.x = p1Pad.x;
+    this.p1.y = p1Pad.y - 30;
+    this.p1.vx = 0;
+    this.p1.vy = 0;
+    this.p1.hp = 100;
+    this.p1.energy = 0;
+    this.p1.isUltraReady = false;
+    this.p1.stunTimer = 0;
+
+    this.p2.x = p2Pad.x;
+    this.p2.y = p2Pad.y - 30;
+    this.p2.vx = 0;
+    this.p2.vy = 0;
+    this.p2.hp = 100;
+    this.p2.energy = 0;
+    this.p2.isUltraReady = false;
+    this.p2.stunTimer = 0;
+
+    const roundTitle = this.kombatRound === 3 ? '¡RONDA FINAL DECISIVA!' : `¡RONDA ${this.kombatRound}!`;
+    this.triggerRoundBanner(roundTitle, '¡A LUCHAR!');
+    audio.playRoundStart();
+  }
+
+  drawRoundBanner(ctx, w, h) {
+    ctx.save();
+    const boxW = Math.min(520, w * 0.85);
+    const boxH = 88;
+    const boxX = (w - boxW) / 2;
+    const boxY = h * 0.35;
+
+    const bannerGrad = ctx.createLinearGradient(boxX, 0, boxX + boxW, 0);
+    bannerGrad.addColorStop(0, 'rgba(15, 23, 42, 0)');
+    bannerGrad.addColorStop(0.2, 'rgba(15, 23, 42, 0.94)');
+    bannerGrad.addColorStop(0.8, 'rgba(15, 23, 42, 0.94)');
+    bannerGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+
+    ctx.fillStyle = bannerGrad;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(boxX + 25, boxY);
+    ctx.lineTo(boxX + boxW - 25, boxY);
+    ctx.moveTo(boxX + 25, boxY + boxH);
+    ctx.lineTo(boxX + boxW - 25, boxY + boxH);
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 36px "Fredoka One", sans-serif';
+    ctx.fillStyle = '#fef08a';
+    ctx.shadowColor = '#000000';
+    ctx.shadowBlur = 10;
+    ctx.fillText(this.roundBannerText, w / 2, boxY + 46);
+
+    if (this.roundBannerSubtext) {
+      ctx.font = '900 16px "Nunito", sans-serif';
+      ctx.fillStyle = '#f87171';
+      ctx.fillText(this.roundBannerSubtext, w / 2, boxY + 74);
+    }
+
+    ctx.restore();
   }
 
   drawHUD(ctx, w, h) {
@@ -2888,6 +3255,158 @@ class CrazyFrogsGame {
     // Nombre truncado para el HUD si es muy largo
     const p1DisplayName = this.p1.name.length > 10 ? this.p1.name.substring(0, 9) + '…' : this.p1.name;
     const p2DisplayName = this.p2.name.length > 10 ? this.p2.name.substring(0, 9) + '…' : this.p2.name;
+
+    if (this.gameMode === 'kombat') {
+      const barW = Math.min(270, w * 0.30);
+      const barH = 22;
+      const topY = 16;
+
+      // --- BARRA DE VIDA P1 (Izquierda) ---
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 2.5;
+      this.roundRect(ctx, 16, topY, barW, barH, 6, true, true);
+
+      ctx.fillStyle = '#7f1d1d';
+      this.roundRect(ctx, 18, topY + 2, barW - 4, barH - 4, 4, true, false);
+
+      const p1HpRatio = Math.max(0, Math.min(1, this.p1.hp / 100));
+      const p1HpW = (barW - 4) * p1HpRatio;
+      if (p1HpW > 0) {
+        const hpGradP1 = ctx.createLinearGradient(18, 0, 18 + p1HpW, 0);
+        if (p1HpRatio > 0.5) {
+          hpGradP1.addColorStop(0, '#22c55e');
+          hpGradP1.addColorStop(1, '#86efac');
+        } else if (p1HpRatio > 0.25) {
+          hpGradP1.addColorStop(0, '#eab308');
+          hpGradP1.addColorStop(1, '#fde047');
+        } else {
+          hpGradP1.addColorStop(0, '#dc2626');
+          hpGradP1.addColorStop(1, '#f87171');
+        }
+        ctx.fillStyle = hpGradP1;
+        this.roundRect(ctx, 18, topY + 2, p1HpW, barH - 4, 4, true, false);
+      }
+
+      ctx.font = '900 12px "Nunito", sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.shadowColor = '#000000';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`🐸 ${p1DisplayName}  ${this.p1.hp} HP`, 24, topY + 16);
+      ctx.shadowBlur = 0;
+
+      // Barra de Super / Ultra P1
+      const energyY = topY + barH + 5;
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1.5;
+      this.roundRect(ctx, 16, energyY, barW, 12, 4, true, true);
+
+      const p1EnergyRatio = Math.max(0, Math.min(1, this.p1.energy / 100));
+      const p1EnergyW = (barW - 4) * p1EnergyRatio;
+      if (p1EnergyW > 0) {
+        ctx.fillStyle = this.p1.isUltraReady ? '#f59e0b' : '#38bdf8';
+        if (this.p1.isUltraReady) {
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 8;
+        }
+        this.roundRect(ctx, 18, energyY + 2, p1EnergyW, 8, 2, true, false);
+        ctx.shadowBlur = 0;
+      }
+      ctx.font = '900 9px "Fredoka One", sans-serif';
+      ctx.fillStyle = this.p1.isUltraReady ? '#fef08a' : '#bae6fd';
+      ctx.fillText(this.p1.isUltraReady ? '🔥 ULTRA MAX' : `ENERGÍA ${Math.round(this.p1.energy)}%`, 22, energyY + 9);
+
+      // --- BARRA DE VIDA P2 (Derecha) ---
+      const p2BarX = w - 16 - barW;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2.5;
+      this.roundRect(ctx, p2BarX, topY, barW, barH, 6, true, true);
+
+      ctx.fillStyle = '#7f1d1d';
+      this.roundRect(ctx, p2BarX + 2, topY + 2, barW - 4, barH - 4, 4, true, false);
+
+      const p2HpRatio = Math.max(0, Math.min(1, this.p2.hp / 100));
+      const p2HpW = (barW - 4) * p2HpRatio;
+      if (p2HpW > 0) {
+        const p2FillX = p2BarX + barW - 2 - p2HpW;
+        const hpGradP2 = ctx.createLinearGradient(p2FillX, 0, p2FillX + p2HpW, 0);
+        if (p2HpRatio > 0.5) {
+          hpGradP2.addColorStop(0, '#f97316');
+          hpGradP2.addColorStop(1, '#fdba74');
+        } else if (p2HpRatio > 0.25) {
+          hpGradP2.addColorStop(0, '#eab308');
+          hpGradP2.addColorStop(1, '#fde047');
+        } else {
+          hpGradP2.addColorStop(0, '#dc2626');
+          hpGradP2.addColorStop(1, '#f87171');
+        }
+        ctx.fillStyle = hpGradP2;
+        this.roundRect(ctx, p2FillX, topY + 2, p2HpW, barH - 4, 4, true, false);
+      }
+
+      ctx.font = '900 12px "Nunito", sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'right';
+      ctx.shadowColor = '#000000';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`${this.p2.hp} HP  🐸 ${p2DisplayName}`, p2BarX + barW - 8, topY + 16);
+      ctx.shadowBlur = 0;
+
+      // Barra de Super / Ultra P2
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+      ctx.strokeStyle = '#ea580c';
+      ctx.lineWidth = 1.5;
+      this.roundRect(ctx, p2BarX, energyY, barW, 12, 4, true, true);
+
+      const p2EnergyRatio = Math.max(0, Math.min(1, this.p2.energy / 100));
+      const p2EnergyW = (barW - 4) * p2EnergyRatio;
+      if (p2EnergyW > 0) {
+        const p2EnergyFillX = p2BarX + barW - 2 - p2EnergyW;
+        ctx.fillStyle = this.p2.isUltraReady ? '#f59e0b' : '#38bdf8';
+        if (this.p2.isUltraReady) {
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 8;
+        }
+        this.roundRect(ctx, p2EnergyFillX, energyY + 2, p2EnergyW, 8, 2, true, false);
+        ctx.shadowBlur = 0;
+      }
+      ctx.font = '900 9px "Fredoka One", sans-serif';
+      ctx.fillStyle = this.p2.isUltraReady ? '#fef08a' : '#bae6fd';
+      ctx.textAlign = 'right';
+      ctx.fillText(this.p2.isUltraReady ? '🔥 ULTRA MAX' : `ENERGÍA ${Math.round(this.p2.energy)}%`, p2BarX + barW - 6, energyY + 9);
+
+      // --- CENTRO: VS Y MARCADOR DE RONDAS STREET FIGHTER ---
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(2, 44, 34, 0.95)';
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2.5;
+      this.roundRect(ctx, w / 2 - 44, topY - 2, 88, 44, 10, true, true);
+
+      ctx.font = 'bold 20px "Fredoka One", sans-serif';
+      ctx.fillStyle = '#ef4444';
+      ctx.fillText('VS', w / 2, topY + 20);
+
+      const rDotY = topY + 35;
+      const p1Dot1 = this.kombatP1Wins >= 1 ? '🟡' : '⚪';
+      const p1Dot2 = this.kombatP1Wins >= 2 ? '🟡' : '⚪';
+      ctx.font = '11px "Fredoka One", sans-serif';
+      ctx.fillText(`${p1Dot2} ${p1Dot1}`, w / 2 - 22, rDotY);
+
+      const p2Dot1 = this.kombatP2Wins >= 1 ? '🟡' : '⚪';
+      const p2Dot2 = this.kombatP2Wins >= 2 ? '🟡' : '⚪';
+      ctx.fillText(`${p2Dot1} ${p2Dot2}`, w / 2 + 22, rDotY);
+
+      ctx.font = '900 11px "Nunito", sans-serif';
+      ctx.fillStyle = '#facc15';
+      const roundLabel = this.kombatRound === 3 ? 'RONDA FINAL' : `RONDA ${this.kombatRound}`;
+      ctx.fillText(roundLabel, w / 2, topY + 54);
+
+      ctx.restore();
+      return;
+    }
 
     // Tarjeta HUD P1 (Izquierda)
     ctx.fillStyle = 'rgba(6, 78, 59, 0.85)';
@@ -3382,6 +3901,25 @@ class CrazyFrogsGame {
       } else if (!s.p1.cBug) {
         this.p1.tongue.caughtBug = null;
       }
+    }
+
+    // Sincronizar Kombat en Invitado
+    if (s.kombat) {
+      if (typeof s.kombat.r === 'number') this.kombatRound = s.kombat.r;
+      if (typeof s.kombat.p1W === 'number') this.kombatP1Wins = s.kombat.p1W;
+      if (typeof s.kombat.p2W === 'number') this.kombatP2Wins = s.kombat.p2W;
+      if (this.p1) {
+        if (typeof s.kombat.p1Hp === 'number') this.p1.hp = s.kombat.p1Hp;
+        if (typeof s.kombat.p1En === 'number') this.p1.energy = s.kombat.p1En;
+        if (typeof s.kombat.p1U === 'boolean') this.p1.isUltraReady = s.kombat.p1U;
+      }
+      if (this.p2) {
+        if (typeof s.kombat.p2Hp === 'number') this.p2.hp = s.kombat.p2Hp;
+        if (typeof s.kombat.p2En === 'number') this.p2.energy = s.kombat.p2En;
+        if (typeof s.kombat.p2U === 'boolean') this.p2.isUltraReady = s.kombat.p2U;
+      }
+      if (s.kombat.bTxt !== undefined) this.roundBannerText = s.kombat.bTxt;
+      if (s.kombat.bSub !== undefined) this.roundBannerSubtext = s.kombat.bSub;
     }
 
     // Sincronizar P2 (Invitado) - Reconciliación suave sin tirones

@@ -125,7 +125,7 @@ global.document = {
       return [btn1, btn2];
     }
     if (selector.includes('#modeSelector')) {
-      return ['time', 'lives', 'race'].map(m => {
+      return ['time', 'lives', 'race', 'kombat'].map(m => {
         const b = new MockElement('', 'button');
         b.dataset.mode = m;
         return b;
