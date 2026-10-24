@@ -135,7 +135,7 @@ body.fullscreen-active .game-container {
 
 .settings-dual-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.28fr 0.92fr;
   gap: 8px;
   width: 100%;
   box-sizing: border-box;
@@ -177,9 +177,13 @@ body.fullscreen-active .game-container {
   gap: 4px;
 }
 
+.mode-group .pill-selector {
+  gap: 4px;
+}
+
 .mode-group .pill-btn {
   padding: 4px 6px;
-  font-size: 0.78rem;
+  font-size: 0.77rem;
 }
 
 .diff-group .pill-btn {
