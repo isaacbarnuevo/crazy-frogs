@@ -1,4 +1,4 @@
-package com.crazyfrogs.game;
+package com.battlefrogs.game;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
