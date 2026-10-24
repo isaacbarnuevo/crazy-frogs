@@ -2624,19 +2624,20 @@ class CrazyFrogsGame {
   // --- GESTIÓN DEL SALÓN DE LA FAMA (RANKING LOCAL Y NUBE) ---
   getLeaderboardData() {
     try {
-      const data = localStorage.getItem('crazyFrogs_rankings_v1');
+      const data = localStorage.getItem('crazyFrogs_rankings_v2');
       if (data) return JSON.parse(data);
     } catch (e) {}
     return {
       time: [],
       lives: [],
-      race: []
+      race: [],
+      kombat: []
     };
   }
 
   saveLeaderboardData(data) {
     try {
-      localStorage.setItem('crazyFrogs_rankings_v1', JSON.stringify(data));
+      localStorage.setItem('crazyFrogs_rankings_v2', JSON.stringify(data));
     } catch (e) {}
   }
 
@@ -2800,11 +2801,9 @@ class CrazyFrogsGame {
   }
 
   resetLeaderboard() {
-    if (confirm('¿Seguro que deseas reiniciar los récords locales de este equipo?')) {
-      localStorage.removeItem('crazyFrogs_rankings_v1');
-      this.renderLeaderboard();
-      this.showToast('¡Récords locales reiniciados con éxito!');
-    }
+    localStorage.removeItem('crazyFrogs_rankings_v1');
+    localStorage.removeItem('crazyFrogs_rankings_v2');
+    this.renderLeaderboard();
   }
 
   async renderLeaderboard() {
@@ -2826,6 +2825,15 @@ class CrazyFrogsGame {
         <th>Cazador</th>
         <th>Puntos</th>
         <th>Vidas Restantes</th>
+        <th>Dificultad</th>
+        <th>Fecha</th>
+      `;
+    } else if (this.lbSelectedMode === 'kombat') {
+      this.lbTableHead.innerHTML = `
+        <th>#</th>
+        <th>Luchador</th>
+        <th>Resultado</th>
+        <th>Rondas / Puntos</th>
         <th>Dificultad</th>
         <th>Fecha</th>
       `;
