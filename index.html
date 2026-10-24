@@ -52,7 +52,7 @@
 
           <!-- Modo y Dificultad en fila dual -->
           <div class="settings-dual-row">
-            <div class="setting-group compact">
+            <div class="setting-group compact mode-group">
               <label class="setting-label">🎯 Modo:</label>
               <div class="pill-selector" id="modeSelector">
                 <button class="pill-btn active" data-mode="time">⏱️ Tiempo</button>
@@ -62,12 +62,14 @@
               </div>
             </div>
 
-            <div class="setting-group compact">
-              <label class="setting-label">⚡ Dificultad de la CPU:</label>
-              <div class="pill-selector" id="diffSelector">
-                <button class="pill-btn" data-diff="easy" title="Rana novata, partidas relajadas">Fácil 🌿</button>
-                <button class="pill-btn active" data-diff="normal" title="Rana equilibrada, partidas reñidas">Normal 🦟</button>
-                <button class="pill-btn" data-diff="hard" title="Rana experta y veloz">Caos 🌪️</button>
+            <div class="setting-group compact diff-group">
+              <div class="diff-header-row">
+                <label class="setting-label">⚡ Dificultad:</label>
+                <div class="pill-selector" id="diffSelector">
+                  <button class="pill-btn" data-diff="easy" title="Rana novata, partidas relajadas">Fácil 🌿</button>
+                  <button class="pill-btn active" data-diff="normal" title="Rana equilibrada, partidas reñidas">Normal 🦟</button>
+                  <button class="pill-btn" data-diff="hard" title="Rana experta y veloz">Caos 🌪️</button>
+                </div>
               </div>
               <div class="diff-hint" id="diffHint">🦟 Normal: Duelo equilibrado y divertido</div>
             </div>

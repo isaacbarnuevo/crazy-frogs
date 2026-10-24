@@ -79,8 +79,8 @@ body.fullscreen-active .game-container {
   border-radius: 20px;
   padding: 12px 24px;
   text-align: center;
-  max-width: 800px;
-  width: 92%;
+  max-width: 820px;
+  width: 94%;
   max-height: 94%;
   color: #ecfdf5;
   box-sizing: border-box;
@@ -137,6 +137,14 @@ body.fullscreen-active .game-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 680px) {
+  .settings-dual-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .setting-group {
@@ -147,14 +155,40 @@ body.fullscreen-active .game-container {
   padding: 6px 12px;
   border-radius: 12px;
   border: 1px solid rgba(74, 222, 128, 0.3);
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .setting-group.compact {
-  padding: 5px 10px;
+  padding: 5px 8px;
+}
+
+.setting-group.diff-group {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.diff-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 4px;
+}
+
+.mode-group .pill-btn {
+  padding: 4px 6px;
+  font-size: 0.78rem;
+}
+
+.diff-group .pill-btn {
+  padding: 4px 7px;
+  font-size: 0.78rem;
 }
 
 .setting-label {
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   font-weight: 900;
   color: #fef08a;
   white-space: nowrap;
@@ -162,16 +196,17 @@ body.fullscreen-active .game-container {
 
 .pill-selector {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .pill-btn {
   background: rgba(2, 44, 34, 0.8);
   border: 2px solid #059669;
   color: #d1fae5;
-  padding: 4px 9px;
+  padding: 4px 8px;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.80rem;
   font-weight: 800;
   border-radius: 20px;
   cursor: pointer;
@@ -190,17 +225,18 @@ body.fullscreen-active .game-container {
   border-color: #fef08a;
   color: #052e16;
   box-shadow: 0 3px 10px rgba(34, 197, 94, 0.4);
-  transform: scale(1.03);
+  transform: scale(1.02);
 }
 
 .diff-hint {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 800;
   color: #a7f3d0;
-  margin-top: 4px;
+  margin-top: 2px;
   text-align: center;
-  transition: all 0.2s ease;
-  letter-spacing: 0.3px;
+  width: 100%;
+  white-space: normal;
+  line-height: 1.15;
 }
 
 /* Controls Guide */
