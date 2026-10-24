@@ -284,6 +284,20 @@ try {
   assert(savedData !== null, 'Se recuperan datos del Salón de la Fama');
   assert(Array.isArray(savedData.time), 'Existe categoría de récord para modo Tiempo');
 
+  // Test 8: Estanque y Grandes Nenúfares estilo Frogs & Flies
+  console.log('\n🌿 Probando Grandes Nenúfares Gemelos (Frogs & Flies):');
+  const pondGame = new CrazyFrogsGame();
+  pondGame.gameMode = 'time';
+  pondGame.startGame();
+
+  assert(pondGame.lilyPads[0].radius >= 140, 'El Gran Nenúfar Izquierdo (P1) es amplio y generoso (>= 140px)');
+  assert(pondGame.lilyPads[1].radius >= 140, 'El Gran Nenúfar Derecho (P2) es amplio y generoso (>= 140px)');
+  assert(pondGame.lilyPads[0].x < pondGame.canvas.width * 0.4, 'Nenúfar P1 está situado a la izquierda');
+  assert(pondGame.lilyPads[1].x > pondGame.canvas.width * 0.6, 'Nenúfar P2 está situado a la derecha');
+  assert(pondGame.lilyPads[2].x === Math.round(pondGame.canvas.width * 0.5), 'Existe nenúfar puente en el centro');
+  assert(pondGame.p1.currentLilyPad === pondGame.lilyPads[0], 'La Rana 1 inicia segura en el Gran Nenúfar Izquierdo');
+  assert(pondGame.p2.currentLilyPad === pondGame.lilyPads[1], 'La Rana 2 inicia segura en el Gran Nenúfar Derecho');
+
 } catch (err) {
   console.error('Error durante la ejecución del test:', err);
   failed++;

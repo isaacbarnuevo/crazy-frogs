@@ -288,7 +288,7 @@ const audio = new SoundSystem();
 
 // --- NENÚFARES (Plataformas) ---
 class LilyPad {
-  constructor(x, y, radius, moves = false, moveSpeed = 0, moveDist = 0, isRing = false) {
+  constructor(x, y, radius, moves = false, moveSpeed = 0, moveDist = 0, isRing = false, isGrandPad = false) {
     this.baseX = x;
     this.baseY = y;
     this.x = x;
@@ -300,6 +300,7 @@ class LilyPad {
     this.moveSpeed = moveSpeed;
     this.moveDist = moveDist;
     this.isRing = isRing;
+    this.isGrandPad = isGrandPad || (radius >= 110 && !isRing);
     this.moveAngle = Math.random() * Math.PI * 2;
     if (moves) {
       this.x = this.baseX + Math.sin(this.moveAngle) * this.moveDist;
@@ -327,9 +328,9 @@ class LilyPad {
   draw(ctx) {
     const curY = this.y + this.dip;
 
-    // Sombra en el agua
+    // Sombra en el agua (más suave y amplia para grandes nenúfares)
     ctx.beginPath();
-    ctx.ellipse(this.x, curY + 8, this.radius, this.radius * 0.45, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.x, curY + 8, this.radius, this.radius * (this.isGrandPad ? 0.40 : 0.45), 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(2, 28, 18, 0.55)';
     ctx.fill();
 
@@ -338,23 +339,41 @@ class LilyPad {
     ctx.translate(this.x, curY);
 
     ctx.beginPath();
-    if (this.isRing || this.radius > 160) {
-      // Ring de combate: completamente redondo, sin corte de pizza
+    if (this.isRing) {
+      // Ring de combate: completamente redondo, sin cortes
       ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+    } else if (this.isGrandPad || this.radius >= 110) {
+      // Grandes Nenúfares estilo Frogs & Flies: muesca sutil y natural de hoja sin huecos gigantes
+      ctx.arc(0, 0, this.radius, 0.12, Math.PI * 1.94);
+      ctx.lineTo(this.radius * 0.22, 0);
+      ctx.closePath();
     } else {
-      // Borde circular con una cuña típica de nenúfar para nenúfares pequeños
-      ctx.arc(0, 0, this.radius, 0.35, Math.PI * 1.95);
-      ctx.lineTo(0, 0);
+      // Nenúfares pequeños
+      ctx.arc(0, 0, this.radius, 0.22, Math.PI * 1.90);
+      ctx.lineTo(this.radius * 0.18, 0);
       ctx.closePath();
     }
-    ctx.fillStyle = this.isRing ? '#15803d' : '#22c55e';
+
+    // Color y degradado vegetal
+    if (this.isRing) {
+      ctx.fillStyle = '#15803d';
+    } else if (this.isGrandPad || this.radius >= 110) {
+      const grad = ctx.createRadialGradient(0, -this.radius * 0.2, 10, 0, 0, this.radius);
+      grad.addColorStop(0, '#22c55e');
+      grad.addColorStop(0.65, '#16a34a');
+      grad.addColorStop(1, '#15803d');
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = '#22c55e';
+    }
     ctx.fill();
-    ctx.lineWidth = this.isRing ? 4.5 : 3;
-    ctx.strokeStyle = this.isRing ? '#facc15' : '#15803d';
+
+    ctx.lineWidth = this.isRing ? 4.5 : (this.isGrandPad || this.radius >= 110 ? 3.5 : 2.5);
+    ctx.strokeStyle = this.isRing ? '#facc15' : '#14532d';
     ctx.stroke();
 
     // Si es el Gran Ring de Kombat, dibujar tatami / líneas de dojo
-    if (this.isRing || this.radius > 160) {
+    if (this.isRing || this.radius > 240) {
       ctx.beginPath();
       ctx.arc(0, 0, this.radius * 0.82, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
@@ -379,21 +398,40 @@ class LilyPad {
 
     // Nervaduras internas
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(21, 128, 61, 0.4)';
-    ctx.lineWidth = 2;
-    for (let a = 0.5; a < Math.PI * 1.9; a += 0.8) {
+    ctx.strokeStyle = 'rgba(21, 128, 61, 0.45)';
+    ctx.lineWidth = (this.isGrandPad || this.radius >= 110) ? 2.5 : 1.8;
+    for (let a = 0.4; a < Math.PI * 1.9; a += (this.isGrandPad ? 0.45 : 0.75)) {
+      const endX = Math.cos(a) * (this.radius - 5);
+      const endY = Math.sin(a) * (this.radius - 5);
       ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(a) * (this.radius - 4), Math.sin(a) * (this.radius - 4));
+      ctx.lineTo(endX, endY);
+      if (this.isGrandPad || this.radius >= 110) {
+        // Ramitas secundarias
+        ctx.moveTo(endX * 0.55, endY * 0.55);
+        ctx.lineTo(endX * 0.85 + Math.cos(a + 0.25) * 14, endY * 0.85 + Math.sin(a + 0.25) * 14);
+      }
     }
     ctx.stroke();
 
-    // Pequeña flor de loto
+    // Gotitas de rocío en los grandes nenúfares
+    if (this.isGrandPad || this.radius >= 110) {
+      ctx.beginPath();
+      ctx.arc(-this.radius * 0.38, this.radius * 0.22, 4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-this.radius * 0.40, this.radius * 0.20, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+
+    // Flor de loto
     ctx.beginPath();
-    ctx.arc(this.radius * 0.3, -this.radius * 0.2, 7, 0, Math.PI * 2);
+    ctx.arc(this.radius * 0.45, -this.radius * 0.3, (this.isGrandPad ? 9 : 6), 0, Math.PI * 2);
     ctx.fillStyle = this.flowerColor;
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(this.radius * 0.3, -this.radius * 0.2, 3, 0, Math.PI * 2);
+    ctx.arc(this.radius * 0.45, -this.radius * 0.3, (this.isGrandPad ? 4 : 2.5), 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
 
@@ -1056,7 +1094,8 @@ class Frog {
     this.vx = 0;
     this.vy = -180;
     this.onGround = false;
-    this.stunTimer = 0.4;
+    this.currentLilyPad = nearestPad;
+    this.stunTimer = 0.25;
   }
 
   updateTongue(dt, bugs, otherFrog, particles, floatingTexts) {
@@ -2397,22 +2436,36 @@ class CrazyFrogsGame {
       return;
     }
 
-    // Nenúfar base P1 (izq) y P2 (dcha) en otros modos
-    this.lilyPads.push(new LilyPad(160, padY, 58, false));
-    this.lilyPads.push(new LilyPad(w - 160, padY, 58, false));
-
-    // Nenúfares centrales y a diferentes alturas
+    // --- ESCENARIOS CLÁSICOS (Tiempo, Vidas, Carrera) INSPIRADOS EN FROGS & FLIES ---
+    // Dos Grandes Nenúfares Gemelos (Hogar P1 a la izquierda y Hogar P2 a la derecha)
+    // Amplios, estables y seguros para que niños y adultos disfruten cazando moscas sin caer al agua.
     const isHard = this.difficulty === 'hard';
     const isEasy = this.difficulty === 'easy';
 
-    this.lilyPads.push(new LilyPad(w * 0.35, padY - 30, 48, !isEasy, 1.2, 40));
-    this.lilyPads.push(new LilyPad(w * 0.5, padY + 15, 52, !isEasy, 1.8, 30));
-    this.lilyPads.push(new LilyPad(w * 0.65, padY - 30, 48, !isEasy, 1.4, 40));
+    // Radio generoso para las bases principales (~185px en pantalla normal)
+    const baseRadius = Math.min(195, Math.max(145, w * 0.23));
 
-    // Nenúfares flotantes altos para cazar moscas arriba
-    this.lilyPads.push(new LilyPad(w * 0.26, padY - 110, 42, isHard, 1.5, 30));
-    this.lilyPads.push(new LilyPad(w * 0.74, padY - 110, 42, isHard, 1.5, 30));
-    this.lilyPads.push(new LilyPad(w * 0.5, padY - 150, 40, false));
+    // 0: Gran Nenúfar Izquierdo (Hogar Rana 1)
+    const p1PadX = Math.round(w * 0.26);
+    this.lilyPads.push(new LilyPad(p1PadX, padY + 5, baseRadius, false, 0, 0, false, true));
+
+    // 1: Gran Nenúfar Derecho (Hogar Rana 2)
+    const p2PadX = Math.round(w * 0.74);
+    this.lilyPads.push(new LilyPad(p2PadX, padY + 5, baseRadius, false, 0, 0, false, true));
+
+    // 2: Nenúfar Puente Central (conecta ambos lados por el centro del estanque)
+    const centerRadius = Math.min(85, Math.max(62, w * 0.095));
+    // En fácil y normal es fijo para que los niños salten sin dificultad; en hard tiene un suave movimiento
+    const centerMoves = isHard;
+    this.lilyPads.push(new LilyPad(w * 0.5, padY + 18, centerRadius, centerMoves, 1.2, 22));
+
+    // 3 y 4: Nenúfares Flotantes Elevados (para interceptar moscas doradas y libélulas en vuelo alto)
+    const perchRadius = 54;
+    this.lilyPads.push(new LilyPad(w * 0.20, padY - 105, perchRadius, isHard, 1.4, 25));
+    this.lilyPads.push(new LilyPad(w * 0.80, padY - 105, perchRadius, isHard, 1.4, 25));
+
+    // 5: Nenúfar Mirador Superior Central
+    this.lilyPads.push(new LilyPad(w * 0.5, padY - 155, 48, false));
   }
 
   startGame() {
@@ -2934,7 +2987,8 @@ class CrazyFrogsGame {
     const w = this.canvas.width;
     const h = this.canvas.height;
     const x = 50 + Math.random() * (w - 100);
-    const minY = this.gameMode === 'kombat' ? Math.max(120, h - 350) : 70;
+    // Altitud accesible: que las moscas vuelen en el arco cómodo de salto y lengüetazo
+    const minY = this.gameMode === 'kombat' ? Math.max(120, h - 350) : Math.max(105, h - 350);
     const maxY = h - 190;
     const y = minY + Math.random() * Math.max(80, (maxY - minY));
 
@@ -3283,13 +3337,45 @@ class CrazyFrogsGame {
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, w, h);
 
-    // Cañas y vegetación de fondo
+    // Vegetación de fondo, espadañas y copas de árboles (homenaje al clásico Frogs & Flies)
     ctx.save();
-    ctx.fillStyle = 'rgba(6, 78, 59, 0.45)';
-    for (let i = 20; i < w; i += 45) {
-      const reedHeight = 120 + Math.sin(i) * 50;
-      ctx.fillRect(i, h - 160 - reedHeight, 6, reedHeight + 60);
+    // Cañas y Espadañas (Cattails)
+    for (let i = 22; i < w; i += 42) {
+      const reedHeight = 110 + Math.sin(i * 1.3) * 45;
+      const topY = h - 165 - reedHeight;
+      ctx.fillStyle = 'rgba(6, 78, 59, 0.5)';
+      ctx.fillRect(i, topY, 5, reedHeight + 50);
+
+      // Espiga marrón de espadaña en juncos alternos
+      if ((i % 84) < 42) {
+        ctx.fillStyle = '#78350f';
+        ctx.beginPath();
+        const cx = i + 2.5;
+        const cy = topY + 18;
+        ctx.ellipse(cx, cy, 5.5, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#92400e';
+        ctx.fillRect(cx - 1, topY + 2, 2, 4);
+      }
     }
+
+    // Copas de árboles/sauces en las esquinas superiores (enmarcado nostálgico Frogs & Flies)
+    ctx.fillStyle = 'rgba(4, 120, 87, 0.38)';
+    // Esquina superior izquierda
+    ctx.beginPath();
+    ctx.ellipse(w * 0.12, 12, w * 0.17, 42, 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(w * 0.04, 30, w * 0.11, 30, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Esquina superior derecha
+    ctx.beginPath();
+    ctx.ellipse(w * 0.88, 12, w * 0.17, 42, -0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(w * 0.96, 30, w * 0.11, 30, 0.2, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 
     // Ondas y superficie del agua del estanque
