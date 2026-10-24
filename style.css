@@ -160,7 +160,7 @@ body.fullscreen-active .game-container {
 }
 
 .setting-group.compact {
-  padding: 5px 10px;
+  padding: 4px 6px;
 }
 
 .setting-group.diff-group {
@@ -174,25 +174,41 @@ body.fullscreen-active .game-container {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 6px;
-}
-
-.mode-group .pill-selector {
   gap: 4px;
 }
 
-.mode-group .pill-btn {
+.mode-group {
   padding: 4px 6px;
-  font-size: 0.74rem;
+}
+
+.mode-group .setting-label,
+.diff-group .setting-label {
+  font-size: 0.82rem;
+  margin-right: 4px;
+}
+
+.mode-group .pill-selector {
+  display: flex;
+  flex: 1;
+  gap: 3px;
+  justify-content: space-between;
+}
+
+.mode-group .pill-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 2px;
+  font-size: 0.70rem;
+  text-align: center;
 }
 
 .diff-group .pill-selector {
-  gap: 5px;
+  gap: 4px;
 }
 
 .diff-group .pill-btn {
-  padding: 4px 8px;
-  font-size: 0.76rem;
+  padding: 4px 6px;
+  font-size: 0.74rem;
 }
 
 .setting-label {
