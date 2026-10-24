@@ -1881,6 +1881,29 @@ class CrazyFrogsGame {
       });
     }
 
+    const btnFsInGame = document.getElementById('inGameFullscreenBtn');
+    if (btnFsInGame) {
+      btnFsInGame.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.requestLandscapeFullscreen();
+      });
+    }
+
+    if (typeof document.addEventListener === 'function') {
+      document.addEventListener('fullscreenchange', () => {
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        if (document.body && document.body.classList) {
+          document.body.classList.toggle('fullscreen-active', isFs);
+        }
+      });
+      document.addEventListener('webkitfullscreenchange', () => {
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        if (document.body && document.body.classList) {
+          document.body.classList.toggle('fullscreen-active', isFs);
+        }
+      });
+    }
+
     document.getElementById('btnResume').addEventListener('click', () => {
       this.resumeGame();
     });
@@ -2346,6 +2369,12 @@ class CrazyFrogsGame {
           await elem.requestFullscreen();
         } else if (elem.webkitRequestFullscreen) {
           await elem.webkitRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
         }
       }
     } catch (err) {
