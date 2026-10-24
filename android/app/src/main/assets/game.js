@@ -3883,8 +3883,13 @@ class CrazyFrogsGame {
     }
 
     this.onlineRole = 'host';
-    const codeNum = Math.floor(10 + Math.random() * 90);
-    this.onlineRoomId = 'FROG' + codeNum;
+    // Generar un código alfanumérico único de 4 caracteres (ej: FROG-7K2X)
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let codeSuffix = '';
+    for (let i = 0; i < 4; i++) {
+      codeSuffix += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    this.onlineRoomId = 'FROG' + codeSuffix;
     if (this.displayRoomCode) this.displayRoomCode.textContent = this.onlineRoomId;
     this.updateHostStatus('⏳ Creando sala en el pantano...', 'status-waiting');
 
@@ -3892,7 +3897,9 @@ class CrazyFrogsGame {
       const rtcConfig = {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' }
         ]
       };
 
@@ -3990,7 +3997,9 @@ class CrazyFrogsGame {
       }
 
       const roomData = snap.data();
-      if (roomData.status !== 'waiting_guest') {
+      // Si la sala está ocupada pero fue creada hace más de 10 minutos, o si está 'waiting_guest'
+      const isExpired = roomData.createdAt && (Date.now() - (roomData.createdAt.toMillis ? roomData.createdAt.toMillis() : 0)) > 10 * 60 * 1000;
+      if (roomData.status !== 'waiting_guest' && !isExpired) {
         this.updateJoinStatus(`❌ Sala ${code} ocupada o finalizada`, 'status-error');
         this.showToast('La sala ya tiene 2 jugadores o se ha cerrado.');
         return;
@@ -3999,7 +4008,9 @@ class CrazyFrogsGame {
       const rtcConfig = {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' }
         ]
       };
 
@@ -4342,6 +4353,9 @@ class CrazyFrogsGame {
 
   cleanupOnlineConnection() {
     this.stopOnlinePing();
+    const currentRoom = this.onlineRoomId;
+    const isHost = this.onlineRole === 'host';
+
     if (this.roomUnsubscribe) {
       this.roomUnsubscribe();
       this.roomUnsubscribe = null;
@@ -4358,6 +4372,19 @@ class CrazyFrogsGame {
       try { this.peerConnection.close(); } catch (e) {}
       this.peerConnection = null;
     }
+
+    // Si salimos y éramos el host, marcar la sala como cerrada o borrarla en Firestore
+    if (currentRoom && this.firestore) {
+      try {
+        const roomRef = this.firestore.collection('rooms').doc(currentRoom);
+        if (isHost) {
+          roomRef.delete().catch(() => {});
+        } else {
+          roomRef.update({ status: 'closed' }).catch(() => {});
+        }
+      } catch (e) {}
+    }
+
     this.isOnline = false;
     this.onlineRole = null;
     this.onlineRoomId = null;
