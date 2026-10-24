@@ -466,8 +466,10 @@ class Bug {
     const pad = 20;
     if (this.x < pad) { this.x = pad; this.vx *= -1; }
     if (this.x > this.bounds.width - pad) { this.x = this.bounds.width - pad; this.vx *= -1; }
-    if (this.y < 50) { this.y = 50; this.vy = Math.abs(this.vy); }
-    if (this.y > this.bounds.height - 180) { this.y = this.bounds.height - 180; this.vy = -Math.abs(this.vy); }
+    const minY = (this.bounds && typeof this.bounds.minY === 'number') ? this.bounds.minY : 60;
+    const maxY = (this.bounds && typeof this.bounds.maxY === 'number') ? this.bounds.maxY : (this.bounds.height - 180);
+    if (this.y < minY) { this.y = minY; this.vy = Math.abs(this.vy); }
+    if (this.y > maxY) { this.y = maxY; this.vy = -Math.abs(this.vy); }
   }
 
   draw(ctx) {
@@ -620,10 +622,11 @@ class Frog {
     this.squash = 1;
     this.stretch = 1;
     this.mouthOpen = 0;
+    this.isFrozen = false;
   }
 
   jump() {
-    if (this.stunTimer > 0) return;
+    if (this.stunTimer > 0 || this.isFrozen) return false;
     if (this.onGround) {
       this.vy = -560; // Fuerza de salto
       this.onGround = false;
@@ -637,7 +640,7 @@ class Frog {
   }
 
   shootTongue(keys, targetDir = null) {
-    if (this.stunTimer > 0) return;
+    if (this.stunTimer > 0 || this.isFrozen) return;
     if (this.tongue.active) return; // Ya está disparando
 
     this.tongueShots++;
@@ -868,18 +871,31 @@ class Frog {
   }
 
   update(dt, keys, lilyPads, bugs, otherFrog, gameBounds, particles, floatingTexts, difficulty = 'normal', touchState = null) {
-    // Timers de estados especiales
-    if (this.stunTimer > 0) {
-      this.stunTimer = Math.max(0, this.stunTimer - dt);
-    }
-    if (this.invulnerableTimer > 0) {
-      this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
-    }
+    if (this.isFrozen) {
+      this.vx = 0;
+      this.isCrouching = false;
+      this.isLookingUp = false;
+      this.jumpBufferTimer = 0;
+      if (this.tongue.active) {
+        this.tongue.active = false;
+        this.tongue.state = 'idle';
+        this.tongue.length = 0;
+        this.tongue.caughtBug = null;
+        this.mouthOpen = 0;
+      }
+    } else {
+      // Timers de estados especiales
+      if (this.stunTimer > 0) {
+        this.stunTimer = Math.max(0, this.stunTimer - dt);
+      }
+      if (this.invulnerableTimer > 0) {
+        this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
+      }
 
-    // Control: CPU vs Humano (Teclado + Pantalla Táctil)
-    if (this.isCPU) {
-      this.updateCPU(dt, lilyPads, bugs, otherFrog, gameBounds, difficulty);
-    } else if (this.stunTimer <= 0) {
+      // Control: CPU vs Humano (Teclado + Pantalla Táctil)
+      if (this.isCPU) {
+        this.updateCPU(dt, lilyPads, bugs, otherFrog, gameBounds, difficulty);
+      } else if (this.stunTimer <= 0) {
       let moveDir = 0;
       if (this.playerNum === 1) {
         const touchLeft = touchState && touchState.left;
@@ -936,6 +952,7 @@ class Frog {
     } else {
       this.vx *= Math.pow(0.01, dt);
     }
+    }
 
     // Físicas (Gravedad)
     const gravity = 1200;
@@ -968,8 +985,8 @@ class Frog {
       }
     }
 
-    // Aterrizaje sobre Nenúfares cuando está en el aire
-    if (!this.onGround && this.vy >= 0) {
+    // Aterrizaje sobre Nenúfares cuando está en el aire o no tiene plataforma vinculada
+    if ((!this.onGround || !this.currentLilyPad) && this.vy >= 0) {
       for (const pad of lilyPads) {
         const curPadY = pad.y + pad.dip;
         const feetY = this.y + this.height * 0.45;
@@ -1004,7 +1021,9 @@ class Frog {
     }
 
     // Actualización de la Lengua
-    this.updateTongue(dt, bugs, otherFrog, particles, floatingTexts);
+    if (!this.isFrozen) {
+      this.updateTongue(dt, bugs, otherFrog, particles, floatingTexts);
+    }
   }
 
   onFallInWater(particles, floatingTexts, lilyPads) {
@@ -1556,6 +1575,8 @@ class CrazyFrogsGame {
     this.onlineWinner = null;
     this.guestInputs = { left: false, right: false, up: false, down: false };
     this.lastGuestSentInput = '';
+    this.roundIntroTimer = 0;
+    this.isGuestKombatLocked = false;
 
     // Estado del juego
     this.gameState = 'menu'; // 'menu', 'playing', 'paused', 'gameover', 'leaderboard', 'online_lobby'
@@ -1891,6 +1912,14 @@ class CrazyFrogsGame {
       this.keys[e.code] = true;
 
       if (this.gameState === 'playing') {
+        if (this.isKombatLocked()) {
+          // Bloqueo total de mandos al inicio y final de ronda en Kombat
+          if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Space' || e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Enter' || e.code === 'ShiftRight' || e.code === 'ShiftLeft' || e.code === 'KeyL') {
+            e.preventDefault();
+          }
+          return;
+        }
+
         if (this.isOnline && this.onlineRole === 'guest') {
           // Si somos Invitado online, controlamos a Rana 2 y enviamos acciones por red
           if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Space' || e.code === 'Enter' || e.code === 'ShiftRight' || e.code === 'ShiftLeft' || e.code === 'KeyL') {
@@ -2007,7 +2036,7 @@ class CrazyFrogsGame {
     bindTouch('touchUp',
       () => {
         this.touchState.up = true;
-        if (this.gameState === 'playing') {
+        if (this.gameState === 'playing' && !this.isKombatLocked()) {
           const activeFrog = (this.isOnline && this.onlineRole === 'guest') ? this.p2 : this.p1;
           if (activeFrog) {
             if (this.touchState.left) {
@@ -2033,7 +2062,7 @@ class CrazyFrogsGame {
 
     bindTouch('touchJump',
       () => {
-        if (this.gameState === 'playing') {
+        if (this.gameState === 'playing' && !this.isKombatLocked()) {
           if (this.isOnline && this.onlineRole === 'guest') {
             if (this.p2) {
               if (this.touchState.left) { this.p2.vx = -300; this.p2.facing = -1; }
@@ -2057,7 +2086,7 @@ class CrazyFrogsGame {
 
     bindTouch('touchTongue',
       () => {
-        if (this.gameState === 'playing') {
+        if (this.gameState === 'playing' && !this.isKombatLocked()) {
           if (this.isOnline && this.onlineRole === 'guest') {
             if (this.p2 && !this.p2.tongue.active) {
               this.p2.shootTongue(this.keys);
@@ -2128,7 +2157,7 @@ class CrazyFrogsGame {
 
         // Salto con inercia direccional al mover en diagonal o hacia arriba
         if (up && !this.touchState.up) {
-          if (this.gameState === 'playing') {
+          if (this.gameState === 'playing' && !this.isKombatLocked()) {
             const activeFrog = (this.isOnline && this.onlineRole === 'guest') ? this.p2 : this.p1;
             if (activeFrog) {
               if (left) {
@@ -2220,7 +2249,7 @@ class CrazyFrogsGame {
     // Tap-to-Shoot en el estanque (Tocar la pantalla o un insecto para disparar la lengua hacia allí)
     if (this.canvas) {
       const handlePointerShoot = (clientX, clientY) => {
-        if (this.gameState !== 'playing') return;
+        if (this.gameState !== 'playing' || this.isKombatLocked()) return;
         if (typeof this.canvas.getBoundingClientRect !== 'function') return;
 
         const rect = this.canvas.getBoundingClientRect();
@@ -2434,6 +2463,10 @@ class CrazyFrogsGame {
 
     this.p1 = new Frog(1, p1SpawnX, p1SpawnY, p1Name);
     this.p2 = new Frog(2, p2SpawnX, p2SpawnY, p2Name);
+    this.p1.currentLilyPad = this.lilyPads[0] || null;
+    this.p2.currentLilyPad = (this.gameMode === 'kombat' ? this.lilyPads[0] : (this.lilyPads[1] || this.lilyPads[0])) || null;
+    this.p1.onGround = true;
+    this.p2.onGround = true;
     this.p2.isCPU = isCPU && !isOnline;
     this.p1.gameMode = this.gameMode;
     this.p2.gameMode = this.gameMode;
@@ -2447,13 +2480,16 @@ class CrazyFrogsGame {
       this.kombatP2Wins = 0;
       this.isRoundOver = false;
       this.roundTransitionTimer = 0;
+      this.roundIntroTimer = 2.0;
       this.p1.hp = 100;
       this.p2.hp = 100;
       this.p1.energy = 0;
       this.p2.energy = 0;
       this.p1.isUltraReady = false;
       this.p2.isUltraReady = false;
-      this.triggerRoundBanner('¡RONDA 1!', '¡A LUCHAR!');
+      this.p1.isFrozen = true;
+      this.p2.isFrozen = true;
+      this.triggerRoundBanner('¡RONDA 1!', '¡PREPARADOS!', 2.0);
       audio.playRoundStart();
     }
 
@@ -2898,7 +2934,9 @@ class CrazyFrogsGame {
     const w = this.canvas.width;
     const h = this.canvas.height;
     const x = 50 + Math.random() * (w - 100);
-    const y = 80 + Math.random() * (h - 280);
+    const minY = this.gameMode === 'kombat' ? Math.max(120, h - 350) : 70;
+    const maxY = h - 190;
+    const y = minY + Math.random() * Math.max(80, (maxY - minY));
 
     const rand = Math.random();
     let type = 'common';
@@ -2915,7 +2953,7 @@ class CrazyFrogsGame {
       else if (rand < 0.72) type = 'wasp';
     }
 
-    this.bugs.push(new Bug(type, x, y, { width: w, height: h }));
+    this.bugs.push(new Bug(type, x, y, { width: w, height: h, minY, maxY }));
   }
 
   update(dt) {
@@ -2923,6 +2961,26 @@ class CrazyFrogsGame {
 
     this.waterTime += dt;
     this.gameElapsedTime += dt;
+
+    if (this.gameMode === 'kombat') {
+      if (this.roundIntroTimer > 0) {
+        this.roundIntroTimer -= dt;
+        if (this.roundIntroTimer > 0.75) {
+          const roundTitle = this.kombatRound === 3 ? '¡RONDA FINAL DECISIVA!' : `¡RONDA ${this.kombatRound}!`;
+          this.roundBannerText = roundTitle;
+          this.roundBannerSubtext = '¡PREPARADOS!';
+        } else if (this.roundIntroTimer > 0) {
+          this.roundBannerText = '¡A LUCHAR!';
+          this.roundBannerSubtext = '';
+        } else {
+          this.roundIntroTimer = 0;
+          this.roundBannerText = '¡A LUCHAR!';
+          this.roundBannerSubtext = '';
+          this.roundBannerTimer = 0.6;
+        }
+      }
+    }
+
     if (this.roundBannerTimer > 0) {
       this.roundBannerTimer -= dt;
       if (this.roundBannerTimer <= 0) {
@@ -2930,23 +2988,38 @@ class CrazyFrogsGame {
         this.roundBannerSubtext = '';
       }
     }
-    if (this.p1) this.p1.gameMode = this.gameMode;
-    if (this.p2) this.p2.gameMode = this.gameMode;
+
+    const kombatLocked = this.isKombatLocked();
+    if (this.p1) {
+      this.p1.gameMode = this.gameMode;
+      this.p1.isFrozen = kombatLocked;
+    }
+    if (this.p2) {
+      this.p2.gameMode = this.gameMode;
+      this.p2.isFrozen = kombatLocked;
+    }
 
     // Actualizar nenúfares
     this.lilyPads.forEach(pad => pad.update(dt));
 
     // Sincronización de entradas del Invitado hacia el Host
     if (this.isOnline && this.onlineRole === 'guest') {
-      const left = !!(this.keys['KeyA'] || this.keys['ArrowLeft'] || this.touchState.left);
-      const right = !!(this.keys['KeyD'] || this.keys['ArrowRight'] || this.touchState.right);
-      const up = !!(this.keys['KeyW'] || this.keys['ArrowUp'] || this.touchState.up);
-      const down = !!(this.keys['KeyS'] || this.keys['ArrowDown'] || this.touchState.down);
+      if (this.isKombatLocked()) {
+        if (this.lastGuestSentInput !== 'false|false|false|false') {
+          this.lastGuestSentInput = 'false|false|false|false';
+          this.sendGuestAction({ t: 'I', left: false, right: false, up: false, down: false });
+        }
+      } else {
+        const left = !!(this.keys['KeyA'] || this.keys['ArrowLeft'] || this.touchState.left);
+        const right = !!(this.keys['KeyD'] || this.keys['ArrowRight'] || this.touchState.right);
+        const up = !!(this.keys['KeyW'] || this.keys['ArrowUp'] || this.touchState.up);
+        const down = !!(this.keys['KeyS'] || this.keys['ArrowDown'] || this.touchState.down);
 
-      const inputKey = `${left}|${right}|${up}|${down}`;
-      if (inputKey !== this.lastGuestSentInput) {
-        this.lastGuestSentInput = inputKey;
-        this.sendGuestAction({ t: 'I', left, right, up, down });
+        const inputKey = `${left}|${right}|${up}|${down}`;
+        if (inputKey !== this.lastGuestSentInput) {
+          this.lastGuestSentInput = inputKey;
+          this.sendGuestAction({ t: 'I', left, right, up, down });
+        }
       }
     }
 
@@ -2996,6 +3069,30 @@ class CrazyFrogsGame {
             this.isRoundOver = true;
             this.roundTransitionTimer = 2.4;
             audio.playKo();
+
+            // Anular de inmediato mandos, movimientos y lenguas
+            if (this.p1) {
+              this.p1.isFrozen = true;
+              this.p1.vx = 0;
+              if (this.p1.tongue) {
+                this.p1.tongue.active = false;
+                this.p1.tongue.state = 'idle';
+                this.p1.tongue.length = 0;
+                this.p1.tongue.caughtBug = null;
+                this.p1.mouthOpen = 0;
+              }
+            }
+            if (this.p2) {
+              this.p2.isFrozen = true;
+              this.p2.vx = 0;
+              if (this.p2.tongue) {
+                this.p2.tongue.active = false;
+                this.p2.tongue.state = 'idle';
+                this.p2.tongue.length = 0;
+                this.p2.tongue.caughtBug = null;
+                this.p2.mouthOpen = 0;
+              }
+            }
 
             if (this.p1.hp <= 0 && this.p2.hp <= 0) {
               this.triggerRoundBanner('¡DOBLE K.O.!', 'EMPATE EN LA RONDA');
@@ -3141,7 +3238,8 @@ class CrazyFrogsGame {
             p1U: this.p1.isUltraReady,
             p2U: this.p2.isUltraReady,
             bTxt: this.roundBannerText,
-            bSub: this.roundBannerSubtext
+            bSub: this.roundBannerSubtext,
+            locked: this.isKombatLocked()
           } : null
         };
         this.sendOnlinePacket(snapshot);
@@ -3249,6 +3347,14 @@ class CrazyFrogsGame {
   }
 
 
+  isKombatLocked() {
+    if (this.gameMode !== 'kombat') return false;
+    if (this.isOnline && this.onlineRole === 'guest') {
+      return !!this.isGuestKombatLocked;
+    }
+    return (this.roundIntroTimer > 0 || this.isRoundOver);
+  }
+
   triggerRoundBanner(text, subtext = '', duration = 2.2) {
     this.roundBannerText = text;
     this.roundBannerSubtext = subtext;
@@ -3259,6 +3365,7 @@ class CrazyFrogsGame {
     this.kombatRound++;
     this.isRoundOver = false;
     this.roundTransitionTimer = 0;
+    this.roundIntroTimer = 2.0;
 
     let p1SpawnX = this.kombatSpawnP1 ? this.kombatSpawnP1.x : (this.lilyPads[0].x);
     let p1SpawnY = this.kombatSpawnP1 ? this.kombatSpawnP1.y : (this.lilyPads[0].y - 30);
@@ -3285,8 +3392,29 @@ class CrazyFrogsGame {
     this.p2.stunTimer = 0;
     this.p2.facing = -1;
 
+    this.p1.isFrozen = true;
+    this.p2.isFrozen = true;
+    this.p1.currentLilyPad = this.lilyPads[0] || null;
+    this.p2.currentLilyPad = this.lilyPads[0] || null;
+    this.p1.onGround = true;
+    this.p2.onGround = true;
+    if (this.p1.tongue) {
+      this.p1.tongue.active = false;
+      this.p1.tongue.state = 'idle';
+      this.p1.tongue.length = 0;
+      this.p1.tongue.caughtBug = null;
+      this.p1.mouthOpen = 0;
+    }
+    if (this.p2.tongue) {
+      this.p2.tongue.active = false;
+      this.p2.tongue.state = 'idle';
+      this.p2.tongue.length = 0;
+      this.p2.tongue.caughtBug = null;
+      this.p2.mouthOpen = 0;
+    }
+
     const roundTitle = this.kombatRound === 3 ? '¡RONDA FINAL DECISIVA!' : `¡RONDA ${this.kombatRound}!`;
-    this.triggerRoundBanner(roundTitle, '¡A LUCHAR!');
+    this.triggerRoundBanner(roundTitle, '¡PREPARADOS!', 2.0);
     audio.playRoundStart();
   }
 
@@ -3918,6 +4046,10 @@ class CrazyFrogsGame {
 
     // Acciones del Invitado recibidas por el Host
     if (this.onlineRole === 'host') {
+      if (this.isKombatLocked()) {
+        this.guestInputs = { left: false, right: false, up: false, down: false };
+        return;
+      }
       if (packet.t === 'I') {
         this.guestInputs = {
           left: !!packet.left,
@@ -4002,6 +4134,11 @@ class CrazyFrogsGame {
       }
       if (s.kombat.bTxt !== undefined) this.roundBannerText = s.kombat.bTxt;
       if (s.kombat.bSub !== undefined) this.roundBannerSubtext = s.kombat.bSub;
+      if (typeof s.kombat.locked === 'boolean') {
+        this.isGuestKombatLocked = s.kombat.locked;
+        if (this.p1) this.p1.isFrozen = s.kombat.locked;
+        if (this.p2) this.p2.isFrozen = s.kombat.locked;
+      }
     }
 
     // Sincronizar P2 (Invitado) - Reconciliación suave sin tirones

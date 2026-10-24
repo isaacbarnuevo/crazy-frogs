@@ -308,6 +308,70 @@ console.log('🥊 INICIANDO TEST SUITE MODO KOMBAT (STREET FROG):\n');
   assert(guestGame.p1.hp === 75, 'El cliente Invitado sincroniza HP de P1');
   assert(guestGame.p2.isUltraReady === true, 'El cliente Invitado sincroniza Ultra de P2');
   assert(guestGame.kombatRound === 2, 'El cliente Invitado sincroniza la ronda actual');
+  assert(guestGame.isKombatLocked() === true, 'El cliente Invitado sincroniza el bloqueo de controles');
+
+  // --- PRUEBA: Bloqueo de mandos y movimientos al inicio de ronda (Intro Ronda) ---
+  const introGame = new CrazyFrogsGame();
+  introGame.gameMode = 'kombat';
+  introGame.opponentMode = 'local2p';
+  introGame.startGame();
+  introGame.bugs = []; // Sin avispas para el test de mandos
+
+  assert(introGame.roundIntroTimer > 0, 'La ronda inicia con temporizador de introducción activo');
+  assert(introGame.isKombatLocked() === true, 'El estado isKombatLocked está activo al iniciar la ronda');
+  assert(introGame.p1.isFrozen === true, 'La Rana 1 está congelada durante la intro de ronda');
+  assert(introGame.p2.isFrozen === true, 'La Rana 2 está congelada durante la intro de ronda');
+
+  // Intentar saltar y disparar lengua durante la intro (deben ser ignorados)
+  const jumpResult = introGame.p1.jump();
+  assert(jumpResult === false, 'El salto de la rana es bloqueado durante la intro');
+  introGame.p1.shootTongue();
+  assert(introGame.p1.tongue.active === false, 'El disparo de lengua es bloqueado durante la intro');
+
+  // Simular paso del tiempo hasta completar la intro
+  while (introGame.roundIntroTimer > 0) {
+    introGame.update(0.016);
+  }
+
+  assert(introGame.roundIntroTimer === 0, 'El temporizador de intro finaliza tras pasar los segundos');
+  assert(introGame.isKombatLocked() === false, 'Los mandos y acciones se desbloquean tras la intro');
+  assert(introGame.p1.isFrozen === false, 'La Rana 1 ya no está congelada');
+  assert(introGame.p2.isFrozen === false, 'La Rana 2 ya no está congelada');
+
+  // Ahora el salto y la lengua deben responder
+  introGame.p1.onGround = true;
+  const jumpUnlocked = introGame.p1.jump();
+  assert(jumpUnlocked === true, 'El salto funciona correctamente tras desbloquear la partida');
+
+  introGame.p1.shootTongue();
+  assert(introGame.p1.tongue.active === true, 'El lengüetazo funciona correctamente tras desbloquear la partida');
+
+  // --- PRUEBA: Bloqueo de mandos y anulación de lenguas al acabar la ronda (K.O.) ---
+  // Al llegar a 0 HP una rana, se produce K.O.
+  introGame.p2.hp = 0;
+  introGame.update(0.016);
+
+  assert(introGame.isRoundOver === true, 'Se activa el fin de ronda (K.O.)');
+  assert(introGame.isKombatLocked() === true, 'Mandos bloqueados al acabar la ronda (K.O.)');
+  assert(introGame.p1.isFrozen === true, 'La Rana 1 queda congelada al finalizar la ronda');
+  assert(introGame.p2.isFrozen === true, 'La Rana 2 queda congelada al finalizar la ronda');
+  assert(introGame.p1.tongue.active === false, 'La lengua activa se retrae de inmediato al K.O.');
+
+  // Comprobar que en K.O. tampoco se puede saltar ni disparar
+  const koJump = introGame.p1.jump();
+  assert(koJump === false, 'No se permite saltar tras el K.O.');
+  introGame.p1.shootTongue();
+  assert(introGame.p1.tongue.active === false, 'No se permite disparar lengüetazo tras el K.O.');
+
+  // --- PRUEBA: Altitud de las moscas al alcance en Kombat ---
+  const altitudeGame = new CrazyFrogsGame();
+  altitudeGame.gameMode = 'kombat';
+  altitudeGame.startGame();
+  for (let i = 0; i < 10; i++) {
+    altitudeGame.spawnBug();
+  }
+  const allBugsReachable = altitudeGame.bugs.every(b => b.y >= 120 && b.bounds.minY >= 120);
+  assert(allBugsReachable === true, 'Las moscas en modo Kombat se mantienen a una altura accesible');
 }
 
 console.log(`\n==========================================`);
