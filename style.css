@@ -135,8 +135,8 @@ body.fullscreen-active .game-container {
 
 .settings-dual-row {
   display: grid;
-  grid-template-columns: 1.28fr 0.92fr;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -160,7 +160,7 @@ body.fullscreen-active .game-container {
 }
 
 .setting-group.compact {
-  padding: 5px 8px;
+  padding: 5px 10px;
 }
 
 .setting-group.diff-group {
@@ -174,7 +174,7 @@ body.fullscreen-active .game-container {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 4px;
+  gap: 6px;
 }
 
 .mode-group .pill-selector {
@@ -183,12 +183,16 @@ body.fullscreen-active .game-container {
 
 .mode-group .pill-btn {
   padding: 4px 6px;
-  font-size: 0.77rem;
+  font-size: 0.74rem;
+}
+
+.diff-group .pill-selector {
+  gap: 5px;
 }
 
 .diff-group .pill-btn {
-  padding: 4px 7px;
-  font-size: 0.78rem;
+  padding: 4px 8px;
+  font-size: 0.76rem;
 }
 
 .setting-label {
