@@ -96,6 +96,7 @@ console.log('🥊 INICIANDO TEST SUITE MODO KOMBAT (STREET FROG):\n');
   assert(game.p1.hp === 100 && game.p2.hp === 100, 'Ambas ranas inician con 100 HP');
   assert(game.p1.energy === 0 && game.p2.energy === 0, 'Barras de energía Ultra inician en 0%');
   assert(game.roundBannerText.includes('RONDA 1'), 'Cartel central anuncia ¡RONDA 1!');
+  assert(game.lilyPads[0].radius >= 250, 'Escenario cuenta con un Gran Ring Central de Combate');
 }
 
 // 2. Carga de Energía Ultra al cazar moscas
@@ -167,7 +168,7 @@ console.log('🥊 INICIANDO TEST SUITE MODO KOMBAT (STREET FROG):\n');
   game.p1.tongue.dirY = 0;
   game.p1.updateTongue(0.001, [], game.p2, [], []);
 
-  assert(game.p2.hp === 90, 'Golpe normal con lengua resta -10 HP (pasa a 90 HP)');
+  assert(game.p2.hp === 96, 'Golpe normal con lengua resta -4 HP (pasa a 96 HP)');
   assert(game.p2.vx > 0, 'Golpe normal aplica retroceso horizontal a la víctima');
 
   // Activar Ultra en P1 y golpear a P2
@@ -183,12 +184,12 @@ console.log('🥊 INICIANDO TEST SUITE MODO KOMBAT (STREET FROG):\n');
   game.p1.tongue.dirY = 0;
   game.p1.updateTongue(0.001, [], game.p2, [], []);
 
-  assert(game.p2.hp === 55, 'Golpe Ultra Crítico resta -35 HP demoledores (pasa a 55 HP)');
+  assert(game.p2.hp === 46, 'Golpe Ultra Mortal resta -50 HP demoledores (pasa a 46 HP)');
   assert(game.p1.isUltraReady === false, 'El Ultra se consume tras el impacto');
   assert(game.p1.energy === 0, 'La barra de energía vuelve a 0 tras usar el Ultra');
 }
 
-// 4. Daño por Caída al Agua (-20 HP)
+// 4. Daño por Caída al Agua (-8 HP)
 {
   const game = new CrazyFrogsGame();
   game.gameMode = 'kombat';
@@ -198,7 +199,7 @@ console.log('🥊 INICIANDO TEST SUITE MODO KOMBAT (STREET FROG):\n');
   game.p1.y = 550; // Nivel de agua
   game.p1.onFallInWater([], [], game.lilyPads);
 
-  assert(game.p1.hp === 80, 'Caer al agua (¡Chof!) resta -20 HP');
+  assert(game.p1.hp === 92, 'Caer al agua (¡Chof!) resta -8 HP');
 }
 
 // 5. Daño y drenaje por Avispas (-15 HP y -25 energía)

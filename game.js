@@ -288,7 +288,7 @@ const audio = new SoundSystem();
 
 // --- NENÚFARES (Plataformas) ---
 class LilyPad {
-  constructor(x, y, radius, moves = false, moveSpeed = 0, moveDist = 0) {
+  constructor(x, y, radius, moves = false, moveSpeed = 0, moveDist = 0, isRing = false) {
     this.baseX = x;
     this.baseY = y;
     this.x = x;
@@ -299,6 +299,7 @@ class LilyPad {
     this.moves = moves;
     this.moveSpeed = moveSpeed;
     this.moveDist = moveDist;
+    this.isRing = isRing;
     this.moveAngle = Math.random() * Math.PI * 2;
     if (moves) {
       this.x = this.baseX + Math.sin(this.moveAngle) * this.moveDist;
@@ -341,11 +342,35 @@ class LilyPad {
     ctx.arc(0, 0, this.radius, 0.35, Math.PI * 1.95);
     ctx.lineTo(0, 0);
     ctx.closePath();
-    ctx.fillStyle = '#22c55e';
+    ctx.fillStyle = this.isRing ? '#15803d' : '#22c55e';
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#15803d';
+    ctx.lineWidth = this.isRing ? 4.5 : 3;
+    ctx.strokeStyle = this.isRing ? '#facc15' : '#15803d';
     ctx.stroke();
+
+    // Si es el Gran Ring de Kombat, dibujar tatami / líneas de dojo
+    if (this.isRing || this.radius > 160) {
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius * 0.82, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius * 0.45, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(254, 240, 138, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Símbolo central de combate
+      ctx.beginPath();
+      ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      ctx.fillStyle = '#dc2626';
+      ctx.fill();
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
 
     // Nervaduras internas
     ctx.beginPath();
@@ -968,8 +993,8 @@ class Frog {
     }
 
     if (this.gameMode === 'kombat') {
-      this.hp = Math.max(0, this.hp - 20);
-      floatingTexts.push(new FloatingText(this.x, this.y - 20, '🌊 -20 HP (¡CHOF!)', '#38bdf8'));
+      this.hp = Math.max(0, this.hp - 8);
+      floatingTexts.push(new FloatingText(this.x, this.y - 20, '🌊 -8 HP (¡CHOF!)', '#38bdf8'));
     } else {
       floatingTexts.push(new FloatingText(this.x, this.y - 20, '¡CHOF!', '#38bdf8'));
     }
@@ -1031,26 +1056,26 @@ class Frog {
         if (frogDist < 28) {
           if (this.gameMode === 'kombat') {
             if (this.isUltraReady) {
-              // Golpe Ultra Demoledor!
+              // Golpe Ultra Mortal Demoledor: ¡quita la mitad de la vida (-50 HP)!
               audio.playUltraHit();
-              otherFrog.hp = Math.max(0, otherFrog.hp - 35);
-              otherFrog.vx = this.facing * 680;
-              otherFrog.vy = -340;
-              otherFrog.stunTimer = 0.6;
-              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 45, '💥 ¡ULTRA CRÍTICO! -35 HP', '#f59e0b'));
-              for (let i = 0; i < 22; i++) {
+              otherFrog.hp = Math.max(0, otherFrog.hp - 50);
+              otherFrog.vx = this.facing * 720;
+              otherFrog.vy = -380;
+              otherFrog.stunTimer = 0.65;
+              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 45, '💥 ¡ULTRA MORTAL! -50 HP', '#f59e0b'));
+              for (let i = 0; i < 25; i++) {
                 particles.push(new SparkleParticle(otherFrog.x, otherFrog.y, '#f59e0b'));
               }
               this.isUltraReady = false;
               this.energy = 0;
             } else {
-              // Golpe Normal
+              // Golpe Normal: hostigamiento / poke (-4 HP)
               audio.playBonk();
-              otherFrog.hp = Math.max(0, otherFrog.hp - 10);
-              otherFrog.vx = this.facing * 360;
-              otherFrog.vy = -180;
+              otherFrog.hp = Math.max(0, otherFrog.hp - 4);
+              otherFrog.vx = this.facing * 340;
+              otherFrog.vy = -160;
               otherFrog.stunTimer = 0.35;
-              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 35, '🥊 -10 HP', '#ef4444'));
+              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 35, '🥊 -4 HP', '#ef4444'));
               for (let i = 0; i < 8; i++) {
                 particles.push(new SparkleParticle(otherFrog.x, otherFrog.y, '#f87171'));
               }
@@ -2302,11 +2327,26 @@ class CrazyFrogsGame {
     const h = this.canvas.height;
 
     this.lilyPads = [];
-
-    // Nenúfares para las ranas: dos fijos de base y varios intermedios flotantes
     const padY = h - 140;
 
-    // Nenúfar base P1 (izq) y P2 (dcha)
+    if (this.gameMode === 'kombat') {
+      // ESCENARIO KOMBAT: GRAN RING CENTRAL DE COMBATE
+      // Gran nenúfar central para luchar con movilidad sin caerse al agua a la primera
+      const ringRadius = Math.min(320, w * 0.35);
+      const mainRing = new LilyPad(w * 0.5, padY + 10, ringRadius, false, 0, 0, true);
+      this.lilyPads.push(mainRing);
+
+      this.kombatSpawnP1 = { x: w * 0.5 - 150, y: padY + 10 - 30 };
+      this.kombatSpawnP2 = { x: w * 0.5 + 150, y: padY + 10 - 30 };
+
+      // Plataformas flotantes secundarias para cazar moscas arriba
+      this.lilyPads.push(new LilyPad(w * 0.16, padY - 100, 48, false));
+      this.lilyPads.push(new LilyPad(w * 0.84, padY - 100, 48, false));
+      this.lilyPads.push(new LilyPad(w * 0.5, padY - 160, 46, false));
+      return;
+    }
+
+    // Nenúfar base P1 (izq) y P2 (dcha) en otros modos
     this.lilyPads.push(new LilyPad(160, padY, 58, false));
     this.lilyPads.push(new LilyPad(w - 160, padY, 58, false));
 
@@ -2355,11 +2395,23 @@ class CrazyFrogsGame {
     }
 
     // Crear Ranas
-    const p1Pad = this.lilyPads[0];
-    const p2Pad = this.lilyPads[1];
+    let p1SpawnX, p1SpawnY, p2SpawnX, p2SpawnY;
+    if (this.gameMode === 'kombat' && this.kombatSpawnP1) {
+      p1SpawnX = this.kombatSpawnP1.x;
+      p1SpawnY = this.kombatSpawnP1.y;
+      p2SpawnX = this.kombatSpawnP2.x;
+      p2SpawnY = this.kombatSpawnP2.y;
+    } else {
+      const p1Pad = this.lilyPads[0];
+      const p2Pad = this.lilyPads[1];
+      p1SpawnX = p1Pad.x;
+      p1SpawnY = p1Pad.y - 30;
+      p2SpawnX = p2Pad.x;
+      p2SpawnY = p2Pad.y - 30;
+    }
 
-    this.p1 = new Frog(1, p1Pad.x, p1Pad.y - 30, p1Name);
-    this.p2 = new Frog(2, p2Pad.x, p2Pad.y - 30, p2Name);
+    this.p1 = new Frog(1, p1SpawnX, p1SpawnY, p1Name);
+    this.p2 = new Frog(2, p2SpawnX, p2SpawnY, p2Name);
     this.p2.isCPU = isCPU && !isOnline;
     this.p1.gameMode = this.gameMode;
     this.p2.gameMode = this.gameMode;
@@ -2954,8 +3006,12 @@ class CrazyFrogsGame {
 
       // Generar nuevas moscas
       this.bugSpawnTimer += dt;
-      const maxBugs = this.difficulty === 'easy' ? 6 : this.difficulty === 'normal' ? 9 : 12;
-      const spawnRate = this.difficulty === 'hard' ? 1.0 : 1.4;
+      let maxBugs = this.difficulty === 'easy' ? 6 : this.difficulty === 'normal' ? 9 : 12;
+      let spawnRate = this.difficulty === 'hard' ? 1.0 : 1.4;
+      if (this.gameMode === 'kombat') {
+        maxBugs = 10;
+        spawnRate = 0.85; // Caza continua para cargar la barra Ultra
+      }
 
       if (this.bugSpawnTimer >= spawnRate && this.bugs.length < maxBugs) {
         this.bugSpawnTimer = 0;
@@ -3182,26 +3238,30 @@ class CrazyFrogsGame {
     this.isRoundOver = false;
     this.roundTransitionTimer = 0;
 
-    const p1Pad = this.lilyPads[0];
-    const p2Pad = this.lilyPads[1];
+    let p1SpawnX = this.kombatSpawnP1 ? this.kombatSpawnP1.x : (this.lilyPads[0].x);
+    let p1SpawnY = this.kombatSpawnP1 ? this.kombatSpawnP1.y : (this.lilyPads[0].y - 30);
+    let p2SpawnX = this.kombatSpawnP2 ? this.kombatSpawnP2.x : (this.lilyPads[1] ? this.lilyPads[1].x : this.lilyPads[0].x + 100);
+    let p2SpawnY = this.kombatSpawnP2 ? this.kombatSpawnP2.y : (this.lilyPads[1] ? this.lilyPads[1].y - 30 : this.lilyPads[0].y - 30);
 
-    this.p1.x = p1Pad.x;
-    this.p1.y = p1Pad.y - 30;
+    this.p1.x = p1SpawnX;
+    this.p1.y = p1SpawnY;
     this.p1.vx = 0;
     this.p1.vy = 0;
     this.p1.hp = 100;
     this.p1.energy = 0;
     this.p1.isUltraReady = false;
     this.p1.stunTimer = 0;
+    this.p1.facing = 1;
 
-    this.p2.x = p2Pad.x;
-    this.p2.y = p2Pad.y - 30;
+    this.p2.x = p2SpawnX;
+    this.p2.y = p2SpawnY;
     this.p2.vx = 0;
     this.p2.vy = 0;
     this.p2.hp = 100;
     this.p2.energy = 0;
     this.p2.isUltraReady = false;
     this.p2.stunTimer = 0;
+    this.p2.facing = -1;
 
     const roundTitle = this.kombatRound === 3 ? '¡RONDA FINAL DECISIVA!' : `¡RONDA ${this.kombatRound}!`;
     this.triggerRoundBanner(roundTitle, '¡A LUCHAR!');
