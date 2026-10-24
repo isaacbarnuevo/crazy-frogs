@@ -338,10 +338,15 @@ class LilyPad {
     ctx.translate(this.x, curY);
 
     ctx.beginPath();
-    // Borde circular con una cuña típica de nenúfar
-    ctx.arc(0, 0, this.radius, 0.35, Math.PI * 1.95);
-    ctx.lineTo(0, 0);
-    ctx.closePath();
+    if (this.isRing || this.radius > 160) {
+      // Ring de combate: completamente redondo, sin corte de pizza
+      ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+    } else {
+      // Borde circular con una cuña típica de nenúfar para nenúfares pequeños
+      ctx.arc(0, 0, this.radius, 0.35, Math.PI * 1.95);
+      ctx.lineTo(0, 0);
+      ctx.closePath();
+    }
     ctx.fillStyle = this.isRing ? '#15803d' : '#22c55e';
     ctx.fill();
     ctx.lineWidth = this.isRing ? 4.5 : 3;
@@ -736,9 +741,11 @@ class Frog {
         const dOther = Math.hypot(otherFrog.x - this.x, otherFrog.y - this.y);
         if (this.gameMode === 'kombat') {
           if (this.isUltraReady) {
-            bonkInterest = 260; // ¡Con Ultra cargado, golpear a la otra rana es prioridad absoluta!
-          } else if (dOther < 190) {
-            bonkInterest = difficulty === 'hard' ? 95 : (difficulty === 'normal' ? 55 : 25);
+            // Con Ultra cargado busca al rival, pero sin ignorar el entorno
+            bonkInterest = dOther < 320 ? 65 : 30;
+          } else if (dOther < 110) {
+            // Solo si el rival se acerca mucho hace un golpe defensivo casual
+            bonkInterest = difficulty === 'hard' ? 30 : (difficulty === 'normal' ? 18 : 8);
           }
         } else if (dOther < 170) {
           bonkInterest = difficulty === 'hard' ? 65 : (difficulty === 'normal' ? 25 : 10);
@@ -807,8 +814,23 @@ class Frog {
         }
       }
 
-      // Desplazamiento horizontal hacia la presa con velocidades calibradas
-      if (Math.abs(dx) > 28) {
+      // Desplazamiento horizontal con distancia táctica
+      if (this.cpuTarget === otherFrog) {
+        // Guardar distancia de combate (~110px a 210px) en lugar de pegarse encima del jugador
+        const minDist = 110;
+        const maxDist = 210;
+        if (Math.abs(dx) < minDist) {
+          // Muy pegado: dar un paso atrás para tener rango de tiro
+          this.vx = (dx > 0 ? -1 : 1) * 140;
+        } else if (Math.abs(dx) > maxDist) {
+          // Lejos: aproximarse con calma hacia la distancia de tiro
+          const approachSpeed = difficulty === 'hard' ? 210 : 160;
+          this.vx = (dx > 0 ? 1 : -1) * approachSpeed;
+        } else {
+          // En distancia óptima: frenar y alinear la puntería
+          this.vx *= Math.pow(0.01, dt);
+        }
+      } else if (Math.abs(dx) > 28) {
         let maxSpeed = 230;
         if (difficulty === 'easy') maxSpeed = 180;
         else if (difficulty === 'hard') maxSpeed = 310;
@@ -993,8 +1015,8 @@ class Frog {
     }
 
     if (this.gameMode === 'kombat') {
-      this.hp = Math.max(0, this.hp - 8);
-      floatingTexts.push(new FloatingText(this.x, this.y - 20, '🌊 -8 HP (¡CHOF!)', '#38bdf8'));
+      this.hp = Math.max(0, this.hp - 6);
+      floatingTexts.push(new FloatingText(this.x, this.y - 20, '🌊 -6 HP (¡CHOF!)', '#38bdf8'));
     } else {
       floatingTexts.push(new FloatingText(this.x, this.y - 20, '¡CHOF!', '#38bdf8'));
     }
@@ -1056,14 +1078,14 @@ class Frog {
         if (frogDist < 28) {
           if (this.gameMode === 'kombat') {
             if (this.isUltraReady) {
-              // Golpe Ultra Mortal Demoledor: ¡quita la mitad de la vida (-50 HP)!
+              // Golpe Ultra Potente (-25 HP, impacto contundente sin matar al instante)
               audio.playUltraHit();
-              otherFrog.hp = Math.max(0, otherFrog.hp - 50);
-              otherFrog.vx = this.facing * 720;
-              otherFrog.vy = -380;
-              otherFrog.stunTimer = 0.65;
-              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 45, '💥 ¡ULTRA MORTAL! -50 HP', '#f59e0b'));
-              for (let i = 0; i < 25; i++) {
+              otherFrog.hp = Math.max(0, otherFrog.hp - 25);
+              otherFrog.vx = this.facing * 540;
+              otherFrog.vy = -290;
+              otherFrog.stunTimer = 0.55;
+              floatingTexts.push(new FloatingText(otherFrog.x, otherFrog.y - 45, '💥 ¡ULTRA! -25 HP', '#f59e0b'));
+              for (let i = 0; i < 20; i++) {
                 particles.push(new SparkleParticle(otherFrog.x, otherFrog.y, '#f59e0b'));
               }
               this.isUltraReady = false;

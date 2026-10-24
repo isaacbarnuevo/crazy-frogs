@@ -184,12 +184,12 @@ console.log('🥊 INICIANDO TEST SUITE MODO KOMBAT (STREET FROG):\n');
   game.p1.tongue.dirY = 0;
   game.p1.updateTongue(0.001, [], game.p2, [], []);
 
-  assert(game.p2.hp === 46, 'Golpe Ultra Mortal resta -50 HP demoledores (pasa a 46 HP)');
+  assert(game.p2.hp === 71, 'Golpe Ultra resta -25 HP equilibrados (pasa a 71 HP sin matar al instante)');
   assert(game.p1.isUltraReady === false, 'El Ultra se consume tras el impacto');
   assert(game.p1.energy === 0, 'La barra de energía vuelve a 0 tras usar el Ultra');
 }
 
-// 4. Daño por Caída al Agua (-8 HP)
+// 4. Daño por Caída al Agua (-6 HP)
 {
   const game = new CrazyFrogsGame();
   game.gameMode = 'kombat';
@@ -199,7 +199,7 @@ console.log('🥊 INICIANDO TEST SUITE MODO KOMBAT (STREET FROG):\n');
   game.p1.y = 550; // Nivel de agua
   game.p1.onFallInWater([], [], game.lilyPads);
 
-  assert(game.p1.hp === 92, 'Caer al agua (¡Chof!) resta -8 HP');
+  assert(game.p1.hp === 94, 'Caer al agua (¡Chof!) resta -6 HP');
 }
 
 // 5. Daño y drenaje por Avispas (-15 HP y -25 energía)
